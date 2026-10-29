@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Substrate · agy live demo</title>
+  <link rel="icon" type="image/png" href="/img/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Ubuntu:wght@500&display=swap">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="as-header">
+    <nav class="as-navbar">
+      <a class="as-navbar__brand" href="https://ate.dev/" target="_blank" rel="noopener">
+        <img src="/img/logo.webp" width="63" height="48" alt="Agent Substrate logo">
+        <span>Agent Substrate</span>
+      </a>
+      <div class="as-navbar__status mono" id="conn-status">
+        <span class="as-status-dot"></span><span data-conn-text>connecting…</span>
+      </div>
+    </nav>
+  </header>
+
+  <main class="as-stage">
+    <section class="as-panel as-term">
+      <div class="as-panel__top">
+        <div class="as-panel__title">
+          <span class="as-live-dot blink" id="term-dot"></span>
+          <span class="mono">agy</span>
+          <span class="as-muted mono">· <span id="term-shell">shell</span></span>
+        </div>
+        <div class="as-panel__actions">
+          <button type="button" class="as-chip mono" id="term-run-agy" title="Type agy into the shell">▶ agy</button>
+          <button type="button" class="as-chip mono" id="term-restart" title="Restart shell">↻ restart</button>
+        </div>
+      </div>
+      <div class="as-term__body" id="terminal"></div>
+    </section>
+
+    <section class="as-viz" id="viz">
+      <img class="as-viz__mascot" src="/img/mascot.webp" width="120" height="91" alt="Yolo, the Agent Substrate mascot">
+      <div class="as-viz__top">
+        <div class="as-viz__ns">
+          <span class="as-viz__live-dot blink" data-viz-live></span>
+          <span class="mono">atespace / <span data-viz-atespace>ate-demo</span></span>
+        </div>
+        <span class="as-viz__mode mono" data-viz-mode></span>
+      </div>
+
+      <div class="as-viz__group">
+        <div class="as-viz__group-header">
+          <span class="as-viz__group-label">ACTORS</span>
+          <span class="as-viz__group-meta mono">
+            <span class="as-text-bright" data-viz-total>0</span> registered ·
+            <span class="as-accent" data-viz-running>0</span> running ·
+            <span class="as-viz__meta-resuming" data-viz-resuming>0</span> resuming ·
+            <span class="as-viz__meta-suspending" data-viz-suspending>0</span> suspending
+          </span>
+        </div>
+        <div class="as-viz__dots" id="viz-dots" aria-label="Registered actors and their states"></div>
+      </div>
+
+      <div class="as-viz__router">
+        <div class="as-viz__router-line"></div>
+        <div class="as-viz__router-pill" id="viz-router">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+          <span class="mono">atenet router</span>
+          <span class="as-viz__router-sub" data-viz-router-sub>routes &amp; resumes on request</span>
+        </div>
+        <div class="as-viz__router-line"></div>
+      </div>
+
+      <div class="as-viz__group">
+        <div class="as-viz__group-header">
+          <span class="as-viz__group-label">READY WORKER PODS</span>
+          <span class="as-viz__group-meta mono">
+            <span class="as-text-bright" data-viz-warm>0</span> warm pods ·
+            <span data-viz-pool>each hosts 1 active actor</span>
+          </span>
+        </div>
+        <div class="as-viz__pods" id="viz-pods"></div>
+      </div>
+
+      <div class="as-viz__group as-viz__group--events">
+        <div class="as-viz__group-header">
+          <span class="as-viz__group-label">EVENTS</span>
+          <span class="as-viz__group-meta mono" data-viz-updated></span>
+        </div>
+        <ol class="as-viz__events mono" id="viz-events"></ol>
+      </div>
+
+      <div class="as-viz__legend">
+        <span class="as-viz__legend-title">Actor state:</span>
+        <span><span class="as-viz__swatch-group" aria-hidden="true"><i class="as-viz__swatch" style="background:#61d76b"></i><i class="as-viz__swatch" style="background:#64b9de"></i><i class="as-viz__swatch" style="background:#f3f17b"></i><i class="as-viz__swatch" style="background:#e77cb2"></i></span>Running</span>
+        <span><i class="as-viz__swatch as-viz__swatch--resuming"></i>Resuming</span>
+        <span><i class="as-viz__swatch as-viz__swatch--suspending"></i>Suspending</span>
+        <span><i class="as-viz__swatch as-viz__swatch--snapshot"></i>Suspended (0 pods)</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/addon-fit.js"></script>
+  <script src="/vendor/addon-web-links.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
