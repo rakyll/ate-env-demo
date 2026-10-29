@@ -4,6 +4,8 @@ An [ate.dev](https://ate.dev/)-style demo page: a real shell on the left for
 running the Antigravity CLI (`agy`), and the `atespace / …` cluster
 visualization on the right, driven live by your Agent Substrate cluster.
 
+![agy running in the browser shell next to the live atespace view](docs/screenshot.png)
+
 ```sh
 npm install
 npm start            # http://127.0.0.1:3000
