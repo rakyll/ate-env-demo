@@ -6,7 +6,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import pty from 'node-pty';
@@ -25,8 +24,29 @@ const PORT_FORWARD = !ateEndpoint && process.env.ATE_PORT_FORWARD !== '0';
 const PF_TARGET = (process.env.ATE_API_SVC || 'ate-system/svc/api:443').match(/^([^/]+)\/(.+):(\d+)$/);
 const PF_LOCAL_PORT = Number(process.env.ATE_PF_PORT || 18443);
 const SHELL = process.env.DEMO_SHELL || process.env.SHELL || '/bin/zsh';
-const SHELL_CWD = process.env.DEMO_CWD || os.homedir();
+const SHELL_CWD = process.env.DEMO_CWD || ROOT;
 const KUBECTL = process.env.KUBECTL || 'kubectl';
+// Each terminal tab is an agy session that owns the actor named by its UUID.
+const ACTOR_ATESPACE = process.env.AGY_ACTOR_ATESPACE || ATESPACE || 'ate-ant';
+const ACTOR_TEMPLATE = process.env.AGY_ACTOR_TEMPLATE || '';
+const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-medium';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function sessionPrompt(id) {
+  const ep = ateEndpoint ? ` --endpoint ${ateEndpoint}` : '';
+  const create = ACTOR_TEMPLATE
+    ? `If it does not exist yet, create it with \`kubectl ate create actor ${id} -a ${ACTOR_ATESPACE} --template ${ACTOR_TEMPLATE}${ep}\`.`
+    : `No actor template is configured; ask me which template to use before creating it with \`kubectl ate create actor ${id} -a ${ACTOR_ATESPACE} --template <template>${ep}\`.`;
+  return [
+    `Your session ID is ${id}.`,
+    `In this session you manage exactly one Agent Substrate actor: the actor named ${id} in atespace ${ACTOR_ATESPACE}.`,
+    create,
+    `Manage its lifecycle with kubectl ate, e.g. \`kubectl ate get actor ${id} -a ${ACTOR_ATESPACE}${ep}\`, \`kubectl ate resume actor ${id} -a ${ACTOR_ATESPACE}${ep}\`, \`kubectl ate suspend actor ${id} -a ${ACTOR_ATESPACE}${ep}\`.`,
+    `Never create, modify, suspend, or delete any other actor.`,
+    `The same values are in the environment as $AGY_SESSION_ID, $ATE_ACTOR, $ATE_ATESPACE, $ATE_ACTOR_TEMPLATE and $ATE_ENDPOINT.`,
+    `Check the actor's current state, report it in one line, then wait for my instructions.`,
+  ].join(' ');
+}
 
 const STATIC = {
   '/': ['public/index.html', 'text/html'],
@@ -170,12 +190,25 @@ ptyWss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://x');
   const cols = Number(url.searchParams.get('cols')) || 100;
   const rows = Number(url.searchParams.get('rows')) || 30;
+  const session = url.searchParams.get('session') || '';
+  if (!UUID_RE.test(session)) return ws.close(1008, 'session must be a lowercase UUID');
   const term = pty.spawn(SHELL, ['-l'], {
     name: 'xterm-256color',
     cols, rows,
     cwd: SHELL_CWD,
-    env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ATE_DEMO: '1' },
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color', COLORTERM: 'truecolor', ATE_DEMO: '1',
+      AGY_SESSION_ID: session,
+      ATE_ACTOR: session,
+      ATE_ATESPACE: ACTOR_ATESPACE,
+      ATE_ACTOR_TEMPLATE: ACTOR_TEMPLATE,
+      ATE_ENDPOINT: ateEndpoint,
+      AGY_SESSION_PROMPT: sessionPrompt(session),
+      AGY_MODEL,
+    },
   });
+  console.log(`session ${session} opened`);
 
   term.onData(d => { if (ws.readyState === 1) ws.send(d); });
   term.onExit(({ exitCode }) => {
@@ -209,7 +242,8 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`ate demo → http://${HOST}:${PORT}  (shell: ${SHELL}, atespace: ${ATESPACE || 'all'})`);
+  console.log(`ate demo → http://${HOST}:${PORT}  (shell: ${SHELL} in ${SHELL_CWD}, atespace: ${ATESPACE || 'all'}, agy model: ${AGY_MODEL})`);
+  console.log(`agy sessions manage actors in ${ACTOR_ATESPACE} from template ${ACTOR_TEMPLATE || '(unset: agy will ask; set AGY_ACTOR_TEMPLATE)'}`);
   if (PORT_FORWARD) startPortForward();
   poll();
 });

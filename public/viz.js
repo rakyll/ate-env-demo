@@ -55,6 +55,7 @@ export class Viz {
     this.dotEls = new Map();
     this.loaded = false;
     this.pools = [];
+    this.sessions = new Map(); // actor name -> tab label, for actors owned by open agy tabs
 
     this.tip = el('div', 'as-tip');
     this.tip.hidden = true;
@@ -63,6 +64,15 @@ export class Viz {
     this.addEvent('ev-suspended', null, 'waiting for cluster state…', true);
 
     setInterval(() => this.renderPods(), 250);
+  }
+
+  // Actors whose name is an open tab's session ID are highlighted as owned by it.
+  setSessions(sessions) {
+    this.sessions = sessions;
+    if (!this.loaded) return;
+    this.assignSlots(Date.now());
+    this.renderDots();
+    this.renderPods();
   }
 
   // Forget everything (used when switching from simulated to live data).
@@ -211,6 +221,7 @@ export class Viz {
       else if (a.snapshots > 0) cls += ' as-viz__dot--snapshot';
       if (state === 'resuming') cls += ' pulse';
       if (this.newUids?.has(a.uid)) cls += ' as-viz__dot--new';
+      if (this.sessions.has(a.name)) cls += ' as-viz__dot--owned';
       d.className = cls;
       d.dataset.uid = a.uid;
       d.dataset.actorColor = a.color;
@@ -245,7 +256,7 @@ export class Viz {
     const order = { resuming: 0, running: 1, suspending: 2 };
     const waiting = [...this.actors.values()]
       .filter(a => (ACTIVE.has(a.state) || a.workerPod) && !placed.has(a.uid))
-      .sort((x, y) => (order[x.state] ?? 3) - (order[y.state] ?? 3));
+      .sort((x, y) => (this.sessions.has(y.name) - this.sessions.has(x.name)) || (order[x.state] ?? 3) - (order[y.state] ?? 3));
     for (const a of waiting) {
       const free = this.slots.indexOf(null);
       if (free < 0) break;
@@ -277,7 +288,10 @@ export class Viz {
       const top = el('div', 'as-viz__pod-top');
       const id = el('span', 'as-viz__pod-id mono', a?.workerPod || `worker-${i + 1}`);
       id.title = a?.workerPod || poolName;
-      top.append(id, el('span', `as-viz__pod-dot as-viz__pod-dot--${a ? state : 'idle'}${state === 'resuming' ? ' pulse' : ''}`));
+      top.appendChild(id);
+      const owner = a && this.sessions.get(a.name);
+      if (owner) top.appendChild(el('span', 'as-viz__pod-owner mono', owner));
+      top.append(el('span', `as-viz__pod-dot as-viz__pod-dot--${a ? state : 'idle'}${state === 'resuming' ? ' pulse' : ''}`));
       pod.appendChild(top);
 
       const track = el('div', 'as-viz__pod-track');
@@ -341,6 +355,8 @@ export class Viz {
       li.appendChild(b);
     }
     if (detail) li.appendChild(el('span', null, detail));
+    const owner = actor && this.sessions.get(actor.name);
+    if (owner) li.appendChild(el('span', 'as-viz__event-owner', owner));
     this.eventsEl.prepend(li);
     while (this.eventsEl.children.length > MAX_EVENTS) this.eventsEl.lastChild.remove();
   }
@@ -360,7 +376,8 @@ export class Viz {
       const a = uid && this.actors.get(uid);
       if (a && t.classList.contains('as-viz__dot')) {
         this.tip.innerHTML = '';
-        this.tip.append(`actor/${a.name}`, el('br'), el('span', null, `${a.state}${a.workerPod ? ' · ' + a.workerPod : ''}${a.template ? ' · ' + a.template : ''}`));
+        const owner = this.sessions.get(a.name);
+        this.tip.append(`actor/${a.name}`, el('br'), el('span', null, `${owner ? owner + ' · ' : ''}${a.state}${a.workerPod ? ' · ' + a.workerPod : ''}${a.template ? ' · ' + a.template : ''}`));
         this.tip.hidden = false;
         const r = t.getBoundingClientRect();
         const w = this.tip.offsetWidth;

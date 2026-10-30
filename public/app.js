@@ -24,51 +24,148 @@ const THEME = {
 
 await document.fonts.load('13px "Geist Mono"').catch(() => {});
 
-const term = new window.Terminal({
-  fontFamily: '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 13.5,
-  lineHeight: 1.25,
-  cursorBlink: true,
-  allowProposedApi: true,
-  scrollback: 10000,
-  theme: THEME,
-});
-const fit = new window.FitAddon.FitAddon();
-term.loadAddon(fit);
-term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
-term.open(document.getElementById('terminal'));
-fit.fit();
+const viz = new Viz(document.getElementById('viz'));
 
-const termDot = document.getElementById('term-dot');
-let sock = null;
+// Each tab is its own xterm + WebSocket, and so its own PTY on the server.
+// A tab is an agy session identified by a UUID; its agy manages the actor
+// with that name (the server exports the ID and an initial prompt).
+const AGY_CMD = 'agy --model "$AGY_MODEL" -i "$AGY_SESSION_PROMPT"\r';
+const termBody = document.getElementById('terminal');
+const tabsEl = document.getElementById('term-tabs');
+const newTabBtn = document.getElementById('term-new');
+const sessions = [];
+let active = null;
+let nextId = 1;
 
-function connectShell() {
-  sock?.close();
-  term.reset();
-  const s = new WebSocket(wsURL(`/ws/pty?cols=${term.cols}&rows=${term.rows}`));
-  sock = s;
-  s.onopen = () => { termDot.classList.remove('is-dead'); term.focus(); };
-  s.onmessage = e => term.write(e.data);
-  s.onclose = () => {
-    if (sock !== s) return;
-    termDot.classList.add('is-dead');
-    term.write('\r\n\x1b[2mshell disconnected — click ↻ restart\x1b[0m\r\n');
-  };
+class Session {
+  constructor() {
+    this.id = nextId++;
+    this.sessionId = crypto.randomUUID();
+    this.label = `agy ${this.id}`;
+    this.el = document.createElement('div');
+    this.el.className = 'as-term__pane';
+    termBody.appendChild(this.el);
+
+    this.term = new window.Terminal({
+      fontFamily: '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 13.5,
+      lineHeight: 1.25,
+      cursorBlink: true,
+      allowProposedApi: true,
+      scrollback: 10000,
+      theme: THEME,
+    });
+    this.fit = new window.FitAddon.FitAddon();
+    this.term.loadAddon(this.fit);
+    this.term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+    this.term.open(this.el);
+    this.term.onData(d => this.send(d));
+    this.term.onResize(({ cols, rows }) => this.send('\x00' + JSON.stringify({ type: 'resize', cols, rows })));
+
+    this.tab = document.createElement('div');
+    this.tab.className = 'as-tab mono';
+    this.tab.setAttribute('role', 'tab');
+    this.tab.innerHTML = '<span class="as-live-dot blink"></span><span class="as-tab__label"></span><span class="as-tab__sid"></span><button type="button" class="as-tab__close" aria-label="Close session">×</button>';
+    this.tab.querySelector('.as-tab__label').textContent = this.label;
+    this.tab.querySelector('.as-tab__sid').textContent = this.sessionId.slice(0, 8);
+    this.tab.title = `session ${this.sessionId}\nmanages actor/${this.sessionId}`;
+    this.tab.onclick = e => (e.target.closest('.as-tab__close') ? closeSession(this) : activate(this));
+    this.tab.onauxclick = e => { if (e.button === 1) closeSession(this); };
+    tabsEl.insertBefore(this.tab, newTabBtn);
+  }
+
+  connect() {
+    this.sock?.close();
+    this.term.reset();
+    if (this.el.offsetParent) this.fit.fit();
+    const s = new WebSocket(wsURL(`/ws/pty?session=${this.sessionId}&cols=${this.term.cols}&rows=${this.term.rows}`));
+    this.sock = s;
+    let first = true;
+    s.onopen = () => {
+      this.setDead(false);
+      if (active === this) this.term.focus();
+    };
+    s.onmessage = e => {
+      this.term.write(e.data);
+      // Wait for the shell's first output (its prompt) before typing.
+      if (first) setTimeout(() => this.send(AGY_CMD), 150);
+      first = false;
+    };
+    s.onclose = () => {
+      if (this.sock !== s) return;
+      this.setDead(true);
+      this.term.write('\r\n\x1b[2mshell disconnected — click ↻ restart\x1b[0m\r\n');
+    };
+  }
+
+  send(d) { if (this.sock?.readyState === 1) this.sock.send(d); }
+  setDead(dead) { this.tab.querySelector('.as-live-dot').classList.toggle('is-dead', dead); }
+
+  dispose() {
+    const s = this.sock;
+    this.sock = null;
+    s?.close();
+    this.term.dispose();
+    this.el.remove();
+    this.tab.remove();
+  }
 }
 
-const send = d => sock?.readyState === 1 && sock.send(d);
-term.onData(send);
-term.onResize(({ cols, rows }) => send('\x00' + JSON.stringify({ type: 'resize', cols, rows })));
-new ResizeObserver(() => fit.fit()).observe(document.getElementById('terminal'));
+function activate(s) {
+  active = s;
+  for (const x of sessions) {
+    const on = x === s;
+    x.el.hidden = !on;
+    x.tab.classList.toggle('is-active', on);
+    x.tab.setAttribute('aria-selected', on);
+  }
+  s.fit.fit();
+  s.term.focus();
+  s.tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
 
-document.getElementById('term-restart').onclick = connectShell;
-document.getElementById('term-run-agy').onclick = () => { send('agy\r'); term.focus(); };
-connectShell();
+const syncSessions = () => viz.setSessions(new Map(sessions.map(s => [s.sessionId, s.label])));
+
+function openSession() {
+  const s = new Session();
+  sessions.push(s);
+  activate(s);
+  s.connect();
+  syncSessions();
+  return s;
+}
+
+function closeSession(s) {
+  const i = sessions.indexOf(s);
+  sessions.splice(i, 1);
+  s.dispose();
+  syncSessions();
+  if (!sessions.length) return openSession();
+  if (active === s) activate(sessions[Math.min(i, sessions.length - 1)]);
+}
+
+new ResizeObserver(() => active?.fit.fit()).observe(termBody);
+newTabBtn.onclick = () => openSession();
+document.getElementById('term-restart').onclick = () => active?.connect();
+document.getElementById('term-run-agy').onclick = () => { active?.send(AGY_CMD); active?.term.focus(); };
+
+// Alt+T new session, Alt+W close, Alt+1..9 switch. (Cmd/Ctrl+T belong to the browser.)
+document.addEventListener('keydown', e => {
+  if (!e.altKey || e.metaKey || e.ctrlKey) return;
+  const n = Number(e.code.replace('Digit', ''));
+  if (e.code === 'KeyT') openSession();
+  else if (e.code === 'KeyW' && active) closeSession(active);
+  else if (n >= 1 && n <= 9 && sessions[n - 1]) activate(sessions[n - 1]);
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+
+openSession();
 
 // ---------------------------------------------------------------------------
 // Cluster visualization (right)
 
-const viz = new Viz(document.getElementById('viz'));
 const conn = document.getElementById('conn-status');
 const setConn = (state, text) => {
   conn.dataset.state = state;
