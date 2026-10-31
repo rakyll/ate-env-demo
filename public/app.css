@@ -220,6 +220,8 @@ body {
   justify-content: space-between;
   gap: 7px;
   max-height: 210px; overflow-y: auto; scrollbar-width: none;
+  /* Room inside the scroll box for the owned outline and hover scale, which it would clip. */
+  padding: 4px; margin: -4px;
 }
 .as-viz__dots::-webkit-scrollbar { display: none; }
 .as-viz__dot {
