@@ -154,6 +154,18 @@ body {
   background: transparent; color: var(--muted); font-size: 16px; cursor: pointer;
 }
 .as-tabs__new:hover, .as-tabs__new:focus-visible { color: var(--accent); border-color: var(--border); background: var(--surface-2); outline: none; }
+.as-menu {
+  position: fixed; z-index: 20; min-width: 120px; padding: 4px;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+}
+.as-menu[hidden] { display: none; }
+.as-menu button {
+  height: 28px; padding: 0 10px; text-align: left;
+  border: 0; border-radius: 5px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
+}
+.as-menu button:hover, .as-menu button:focus-visible { color: var(--accent); background: var(--card); outline: none; }
 .as-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .as-live-dot.is-dead { background: var(--red); animation: none; }
 .as-chip {

@@ -27,22 +27,29 @@ await document.fonts.load('13px "Geist Mono"').catch(() => {});
 const viz = new Viz(document.getElementById('viz'));
 
 // Each tab is its own xterm + WebSocket, and so its own PTY on the server.
-// A tab is an agy session identified by a UUID; the server exports it and the
-// actor of the same name into the shell's environment. agy runs with $AGY_HOME,
-// whose mcp_config.json adds the session's MCP server.
-const AGY_CMD = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL"\r';
+// A tab is an agy or Claude Code session identified by a UUID; the server
+// exports it and the actor of the same name into the shell's environment, plus
+// the per-session MCP config each agent reads.
+const AGENT_CMDS = {
+  // One expansion per word: zsh doesn't split ${X:+--flag "$X"} into two.
+  agy: 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--settings} ${AGY_SETTINGS:+"$AGY_SETTINGS"}\r',
+  claude: 'claude ${CLAUDE_MCP_CONFIG:+--mcp-config} ${CLAUDE_MCP_CONFIG:+"$CLAUDE_MCP_CONFIG"} ${CLAUDE_SESSION_PROMPT:+--append-system-prompt} ${CLAUDE_SESSION_PROMPT:+"$CLAUDE_SESSION_PROMPT"} ${CLAUDE_ALLOWED_TOOLS:+--allowedTools} ${CLAUDE_ALLOWED_TOOLS:+"$CLAUDE_ALLOWED_TOOLS"}\r',
+};
 const termBody = document.getElementById('terminal');
 const tabsEl = document.getElementById('term-tabs');
 const newTabBtn = document.getElementById('term-new');
+const newTabMenu = document.getElementById('term-new-menu');
+const runBtn = document.getElementById('term-run-agent');
 const sessions = [];
 let active = null;
 let nextId = 1;
 
 class Session {
-  constructor() {
+  constructor(agent) {
     this.id = nextId++;
+    this.agent = agent;
     this.sessionId = crypto.randomUUID();
-    this.label = `agy ${this.id}`;
+    this.label = `${agent} ${this.id}`;
     this.el = document.createElement('div');
     this.el.className = 'as-term__pane';
     termBody.appendChild(this.el);
@@ -79,7 +86,7 @@ class Session {
     this.sock?.close();
     this.term.reset();
     if (this.el.offsetParent) this.fit.fit();
-    const s = new WebSocket(wsURL(`/ws/pty?session=${this.sessionId}&cols=${this.term.cols}&rows=${this.term.rows}`));
+    const s = new WebSocket(wsURL(`/ws/pty?session=${this.sessionId}&agent=${this.agent}&cols=${this.term.cols}&rows=${this.term.rows}`));
     this.sock = s;
     let first = true;
     s.onopen = () => {
@@ -89,7 +96,7 @@ class Session {
     s.onmessage = e => {
       this.term.write(e.data);
       // Wait for the shell's first output (its prompt) before typing.
-      if (first) setTimeout(() => this.send(AGY_CMD), 150);
+      if (first) setTimeout(() => this.send(AGENT_CMDS[this.agent]), 150);
       first = false;
     };
     s.onclose = () => {
@@ -120,6 +127,8 @@ function activate(s) {
     x.tab.classList.toggle('is-active', on);
     x.tab.setAttribute('aria-selected', on);
   }
+  runBtn.textContent = `▶ ${s.agent}`;
+  runBtn.title = `Type ${s.agent} into the shell`;
   s.fit.fit();
   s.term.focus();
   s.tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -127,8 +136,8 @@ function activate(s) {
 
 const syncSessions = () => viz.setSessions(new Map(sessions.map(s => [s.sessionId, s.label])));
 
-function openSession() {
-  const s = new Session();
+function openSession(agent = active?.agent || 'agy') {
+  const s = new Session(agent);
   sessions.push(s);
   activate(s);
   s.connect();
@@ -146,11 +155,30 @@ function closeSession(s) {
 }
 
 new ResizeObserver(() => active?.fit.fit()).observe(termBody);
-newTabBtn.onclick = () => openSession();
-document.getElementById('term-restart').onclick = () => active?.connect();
-document.getElementById('term-run-agy').onclick = () => { active?.send(AGY_CMD); active?.term.focus(); };
 
-// Alt+T new session, Alt+W close, Alt+1..9 switch. (Cmd/Ctrl+T belong to the browser.)
+// + opens a menu to pick the agent for the new session.
+function toggleNewTabMenu(open = newTabMenu.hidden) {
+  newTabMenu.hidden = !open;
+  newTabBtn.setAttribute('aria-expanded', open);
+  if (!open) return;
+  const r = newTabBtn.getBoundingClientRect();
+  newTabMenu.style.left = `${r.left}px`;
+  newTabMenu.style.top = `${r.bottom + 4}px`;
+  newTabMenu.querySelector('button').focus();
+}
+newTabBtn.onclick = e => { e.stopPropagation(); toggleNewTabMenu(); };
+newTabMenu.onclick = e => {
+  const agent = e.target.closest('[data-agent]')?.dataset.agent;
+  if (!agent) return;
+  toggleNewTabMenu(false);
+  openSession(agent);
+};
+document.addEventListener('click', e => { if (!newTabMenu.contains(e.target)) toggleNewTabMenu(false); });
+newTabMenu.addEventListener('keydown', e => { if (e.key === 'Escape') { toggleNewTabMenu(false); active?.term.focus(); } });
+document.getElementById('term-restart').onclick = () => active?.connect();
+runBtn.onclick = () => { active?.send(AGENT_CMDS[active.agent]); active?.term.focus(); };
+
+// Alt+T new session of the active tab's agent, Alt+W close, Alt+1..9 switch. (Cmd/Ctrl+T belong to the browser.)
 document.addEventListener('keydown', e => {
   if (!e.altKey || e.metaKey || e.ctrlKey) return;
   const n = Number(e.code.replace('Digit', ''));

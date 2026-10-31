@@ -37,15 +37,21 @@ const KUBECTL = process.env.KUBECTL || 'kubectl';
 let kubeContext = process.env.KUBE_CONTEXT || '';
 let kubeContexts = [];
 let contextGen = 0; // bumped on switch so in-flight polls of the old cluster are dropped
-// Each terminal tab is an agy session; its shell exports the actor it owns (named by its UUID).
+// Each terminal tab runs agy or Claude Code; its shell exports the actor it owns (named by its UUID).
 const ACTOR_ATESPACE = process.env.AGY_ACTOR_ATESPACE || ATESPACE || 'ate-ant';
 const ACTOR_TEMPLATE = process.env.AGY_ACTOR_TEMPLATE || '';
 const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-medium';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-// Every agy also gets a per-session MCP server ({session} is the session UUID).
+// Every agent also gets a per-session MCP server ({session} is the session UUID).
 // Empty AGY_MCP_URL disables it.
 const AGY_MCP_NAME = process.env.AGY_MCP_NAME || 'session-env';
 const AGY_MCP_URL = process.env.AGY_MCP_URL ?? `http://localhost:${ENV_PF_PORT}/v1alpha/envs/{session}/mcp`;
+const AGENTS = ['agy', 'claude'];
+// Appended to each agent's instructions so its file and shell work runs in the session's actor.
+const SESSION_RULES = `Your workspace is the Agent Substrate environment behind the \`${AGY_MCP_NAME}\` MCP server, not this machine.
+Always use its tools: \`read_file\` and \`write_file\` for every file system operation, and \`shell\` for every shell or bash command.
+Never use your built-in file, edit, search, or terminal tools. They act on the local machine.
+`;
 
 const STATIC = {
   '/': ['public/index.html', 'text/html'],
@@ -258,9 +264,11 @@ clusterWss.on('connection', async ws => {
   ws.send(JSON.stringify({ type: 'cluster', cluster }));
 });
 
-// agy only reads MCP servers from $HOME/.gemini/config/mcp_config.json, so each
-// PTY gets an overlay home: symlinks to everything in the real home except that
-// file, which holds the global servers plus the session's. Only agy runs with it.
+// agy only reads MCP servers from $HOME/.gemini/config/mcp_config.json and
+// global rules from $HOME/.gemini/GEMINI.md, so agy gets an overlay home:
+// symlinks to everything in the real home except those files. The copies add
+// the session's server and SESSION_RULES. Only agy runs with it. Claude Code
+// takes a per-session --mcp-config file and --append-system-prompt instead.
 const REAL_HOME = os.homedir();
 const HOMES_DIR = path.join(os.tmpdir(), 'ate-demo-homes');
 fs.rmSync(HOMES_DIR, { recursive: true, force: true }); // rm never follows symlinks
@@ -269,23 +277,39 @@ fs.mkdirSync(HOMES_DIR, { recursive: true });
 function linkAllExcept(from, to, skip) {
   fs.mkdirSync(to, { recursive: true });
   for (const name of fs.readdirSync(from)) {
-    if (name !== skip) fs.symlinkSync(path.join(from, name), path.join(to, name));
+    if (!skip.includes(name)) fs.symlinkSync(path.join(from, name), path.join(to, name));
   }
 }
 
-function makeAgyHome(session) {
-  const home = fs.mkdtempSync(path.join(HOMES_DIR, `${session}-`));
+const readOr = (file, fallback) => { try { return fs.readFileSync(file, 'utf8'); } catch { return fallback; } };
+
+function makeAgyHome(home, url) {
   const gemini = path.join(REAL_HOME, '.gemini');
   const config = path.join(gemini, 'config');
-  linkAllExcept(REAL_HOME, home, '.gemini');
-  if (fs.existsSync(gemini)) linkAllExcept(gemini, path.join(home, '.gemini'), 'config');
-  if (fs.existsSync(config)) linkAllExcept(config, path.join(home, '.gemini', 'config'), 'mcp_config.json');
+  linkAllExcept(REAL_HOME, home, ['.gemini']);
+  if (fs.existsSync(gemini)) linkAllExcept(gemini, path.join(home, '.gemini'), ['config', 'GEMINI.md']);
+  if (fs.existsSync(config)) linkAllExcept(config, path.join(home, '.gemini', 'config'), ['mcp_config.json']);
   else fs.mkdirSync(path.join(home, '.gemini', 'config'), { recursive: true });
-  let mcp = { mcpServers: {} };
-  try { mcp = JSON.parse(fs.readFileSync(path.join(config, 'mcp_config.json'), 'utf8')); } catch { /* none yet */ }
-  mcp.mcpServers = { ...mcp.mcpServers, [AGY_MCP_NAME]: { serverUrl: AGY_MCP_URL.replaceAll('{session}', session) } };
+  const mcp = JSON.parse(readOr(path.join(config, 'mcp_config.json'), '{"mcpServers":{}}'));
+  mcp.mcpServers = { ...mcp.mcpServers, [AGY_MCP_NAME]: { serverUrl: url } };
   fs.writeFileSync(path.join(home, '.gemini', 'config', 'mcp_config.json'), JSON.stringify(mcp, null, 2));
-  return home;
+  const rules = readOr(path.join(gemini, 'GEMINI.md'), '');
+  fs.writeFileSync(path.join(home, '.gemini', 'GEMINI.md'), `${rules}${rules && !rules.endsWith('\n') ? '\n' : ''}${SESSION_RULES}`);
+}
+
+// Returns the session's temp dir and the env vars its agent command reads.
+// Both agents may call the session's MCP tools without asking.
+function makeSessionDir(session, agent) {
+  const dir = fs.mkdtempSync(path.join(HOMES_DIR, `${session}-`));
+  const url = AGY_MCP_URL.replaceAll('{session}', session);
+  if (agent === 'claude') {
+    const config = path.join(dir, 'mcp.json');
+    fs.writeFileSync(config, JSON.stringify({ mcpServers: { [AGY_MCP_NAME]: { type: 'http', url } } }, null, 2));
+    return { dir, env: { CLAUDE_MCP_CONFIG: config, CLAUDE_SESSION_PROMPT: SESSION_RULES, CLAUDE_ALLOWED_TOOLS: `mcp__${AGY_MCP_NAME}` } };
+  }
+  const home = path.join(dir, 'home');
+  makeAgyHome(home, url);
+  return { dir, env: { AGY_HOME: home, AGY_SETTINGS: JSON.stringify({ permissions: { allow: [`mcp(${AGY_MCP_NAME}/*)`] } }) } };
 }
 
 // Each open session needs an env named after it before its MCP URL works.
@@ -312,10 +336,15 @@ ptyWss.on('connection', (ws, req) => {
   const cols = Number(url.searchParams.get('cols')) || 100;
   const rows = Number(url.searchParams.get('rows')) || 30;
   const session = url.searchParams.get('session') || '';
+  const agent = url.searchParams.get('agent') || 'agy';
   if (!UUID_RE.test(session)) return ws.close(1008, 'session must be a lowercase UUID');
-  let agyHome = REAL_HOME;
+  if (!AGENTS.includes(agent)) return ws.close(1008, `agent must be one of ${AGENTS.join(', ')}`);
+  let sessionDir = null;
+  let agentEnv = { AGY_HOME: REAL_HOME };
   if (AGY_MCP_URL) {
-    try { agyHome = makeAgyHome(session); } catch (e) { console.error(`session ${session}: no MCP overlay home: ${e.message}`); }
+    try {
+      ({ dir: sessionDir, env: agentEnv } = makeSessionDir(session, agent));
+    } catch (e) { console.error(`session ${session}: no MCP config: ${e.message}`); }
   }
   const term = pty.spawn(SHELL, ['-l'], {
     name: 'xterm-256color',
@@ -331,10 +360,10 @@ ptyWss.on('connection', (ws, req) => {
       ATE_CONTEXT: kubeContext,
       ATE_ENDPOINT: ateEndpoint(),
       AGY_MODEL,
-      AGY_HOME: agyHome,
+      ...agentEnv,
     },
   });
-  console.log(`session ${session} opened`);
+  console.log(`session ${session} (${agent}) opened`);
   if (AGY_MCP_URL) {
     openSessions.set(session, (openSessions.get(session) || 0) + 1);
     ensureEnv(session);
@@ -360,7 +389,7 @@ ptyWss.on('connection', (ws, req) => {
   });
   ws.on('close', () => {
     try { term.kill(); } catch { /* already gone */ }
-    if (agyHome !== REAL_HOME) fs.rm(agyHome, { recursive: true, force: true }, () => {});
+    if (sessionDir) fs.rm(sessionDir, { recursive: true, force: true }, () => {});
     const n = (openSessions.get(session) || 0) - 1;
     if (n > 0) openSessions.set(session, n);
     else openSessions.delete(session);
