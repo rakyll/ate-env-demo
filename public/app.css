@@ -207,7 +207,8 @@ body {
   grid-template-columns: repeat(10, 40px);
   justify-content: space-between;
   gap: 10px;
-  max-height: 210px; overflow-y: auto; scrollbar-width: none;
+  /* Four rows plus padding; more actors scroll. */
+  max-height: calc(4 * 40px + 3 * 10px + 8px); overflow-y: auto; scrollbar-width: none;
   /* Room inside the scroll box for the owned outline and hover scale, which it would clip. */
   padding: 4px; margin: -4px;
 }
@@ -315,7 +316,7 @@ body {
 
 @media (max-width: 1280px) {
   .as-stage { grid-template-columns: minmax(0, 1fr) 520px; padding: 28px 24px 20px; gap: 20px; }
-  .as-viz__dots { grid-template-columns: repeat(10, 36px); gap: 8px; }
+  .as-viz__dots { grid-template-columns: repeat(10, 36px); gap: 8px; max-height: calc(4 * 36px + 3 * 8px + 8px); }
   .as-viz__router-sub { display: none; }
 }
 @media (max-width: 1000px) {
