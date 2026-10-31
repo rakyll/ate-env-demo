@@ -37,18 +37,17 @@ const KUBECTL = process.env.KUBECTL || 'kubectl';
 let kubeContext = process.env.KUBE_CONTEXT || '';
 let kubeContexts = [];
 let contextGen = 0; // bumped on switch so in-flight polls of the old cluster are dropped
-// Each terminal tab runs agy or Claude Code; its shell exports the actor it owns (named by its UUID).
+// Each terminal tab runs agy; its shell exports the actor it owns (named by its UUID).
 const ACTOR_ATESPACE = process.env.AGY_ACTOR_ATESPACE || ATESPACE || 'ate-ant';
 const ACTOR_TEMPLATE = process.env.AGY_ACTOR_TEMPLATE || '';
 const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-medium';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-// Every agent also gets a per-session MCP server ({session} is the session UUID).
-// Agents reach it through /mcp/<session> on this server (see proxyMCP).
+// Every tab also gets a per-session MCP server ({session} is the session UUID).
+// agy reaches it through /mcp/<session> on this server (see proxyMCP).
 // Empty AGY_MCP_URL disables it.
 const AGY_MCP_NAME = process.env.AGY_MCP_NAME || 'env';
 const AGY_MCP_URL = process.env.AGY_MCP_URL ?? `http://localhost:${ENV_PF_PORT}/v1alpha/envs/{session}/mcp`;
-const AGENTS = ['agy', 'claude'];
-// Appended to each agent's instructions so its file and shell work runs in the session's actor.
+// Appended to agy's instructions so its file and shell work runs in the session's actor.
 const SESSION_RULES = `Your workspace is the Agent Substrate environment behind the \`${AGY_MCP_NAME}\` MCP server, not this machine.
 Always use its tools: \`read_file\` and \`write_file\` for every file system operation, and \`shell\` for every shell or bash command.
 Never use your built-in file, edit, search, or terminal tools. They act on the local machine.
@@ -319,16 +318,11 @@ function makeAgyHome(home, url) {
   fs.writeFileSync(path.join(home, '.gemini', 'GEMINI.md'), `${rules}${rules && !rules.endsWith('\n') ? '\n' : ''}${SESSION_RULES}`);
 }
 
-// Returns the session's temp dir and the env vars its agent command reads.
-// Both agents may call the session's MCP tools without asking.
-function makeSessionDir(session, agent) {
+// Returns the session's temp dir and the env vars the agy command reads.
+// agy may call the session's MCP tools without asking.
+function makeSessionDir(session) {
   const dir = fs.mkdtempSync(path.join(HOMES_DIR, `${session}-`));
   const url = `http://127.0.0.1:${PORT}/mcp/${session}`;
-  if (agent === 'claude') {
-    const config = path.join(dir, 'mcp.json');
-    fs.writeFileSync(config, JSON.stringify({ mcpServers: { [AGY_MCP_NAME]: { type: 'http', url } } }, null, 2));
-    return { dir, env: { CLAUDE_MCP_CONFIG: config, CLAUDE_SESSION_PROMPT: SESSION_RULES, CLAUDE_ALLOWED_TOOLS: `mcp__${AGY_MCP_NAME}` } };
-  }
   const home = path.join(dir, 'home');
   makeAgyHome(home, url);
   return { dir, env: { AGY_HOME: home, AGY_SETTINGS: JSON.stringify({ permissions: { allow: [`mcp(${AGY_MCP_NAME}/*)`] } }) } };
@@ -365,7 +359,10 @@ function isToolCall(body) {
 }
 
 function suspendEnv(session) {
+  setActivity(session, 'suspending');
   execFile(ATE_ENV, ['suspend', session, '--api', envTunnel.endpoint], { timeout: 120000 }, (err, stdout, stderr) => {
+    // A new tool call may have woken it meanwhile.
+    if (activity.get(session) === 'suspending') setActivity(session, null);
     if (err) console.error(`session ${session}: ate-env suspend failed: ${`${stdout}${stderr}`.trim() || err.message}`);
   });
 }
@@ -417,13 +414,12 @@ ptyWss.on('connection', (ws, req) => {
       ({ dir: sessionDir, env: agentEnv } = makeSessionDir(session));
     } catch (e) { console.error(`session ${session}: no MCP config: ${e.message}`); }
   }
-  const term = pty.spawn(SHELL, ['-l', '-i', '-c', AGY_RUN], {
+  const term = pty.spawn(SHELL, ['-l'], {
     name: 'xterm-256color',
     cols, rows,
     cwd: SHELL_CWD,
     env: {
       ...process.env,
-      SHELL,
       TERM: 'xterm-256color', COLORTERM: 'truecolor', ATE_DEMO: '1',
       AGY_SESSION_ID: session,
       ATE_ACTOR: session,
@@ -435,7 +431,7 @@ ptyWss.on('connection', (ws, req) => {
       ...agentEnv,
     },
   });
-  console.log(`session ${session} (${agent}) opened`);
+  console.log(`session ${session} opened`);
   if (AGY_MCP_URL) {
     openSessions.set(session, (openSessions.get(session) || 0) + 1);
     ensureEnv(session);

@@ -1,7 +1,7 @@
 # ate-env-demo
 
 An [ate.dev](https://ate.dev/)-style demo page: a real shell on the left for
-running the Antigravity CLI (`agy`) or Claude Code (`claude`), and the `atespace / …` cluster
+running the Antigravity CLI (`agy`), and the `atespace / …` cluster
 visualization on the right, driven live by your Agent Substrate cluster.
 
 ![agy running in the browser shell next to the live atespace view](docs/screenshot.png)
@@ -12,28 +12,25 @@ npm start            # http://127.0.0.1:3000
 ```
 
 - **Sessions**: each tab is a login `$SHELL` in its own PTY, streamed to
-  xterm.js over a WebSocket. **+** opens a tab running agy or Claude Code,
-  Alt+T opens one running the current tab's agent, Alt+W closes it, and Alt+1…9
+  xterm.js over a WebSocket. **+** or Alt+T opens a tab running agy, Alt+W closes it, and Alt+1…9
   switches between tabs.
 - **One actor per session**: each tab gets a UUID session ID. Its shell exports
   `AGY_SESSION_ID`, `ATE_ACTOR` (same value), `ATE_ATESPACE`,
   `ATE_ACTOR_TEMPLATE`, `ATE_CONTEXT`, `ATE_ENDPOINT`, and `AGY_MODEL`, then
-  starts `HOME="$AGY_HOME" agy --model "$AGY_MODEL" --settings "$AGY_SETTINGS"` or
-  `claude --mcp-config "$CLAUDE_MCP_CONFIG" --append-system-prompt "$CLAUDE_SESSION_PROMPT" --allowedTools "$CLAUDE_ALLOWED_TOOLS"`
+  starts `HOME="$AGY_HOME" agy --model "$AGY_MODEL" --settings "$AGY_SETTINGS"`
   with no initial prompt. The
   visualization outlines actors owned by open tabs and labels them with the
   tab name.
-- **Per-session MCP server**: each tab's agent gets an `env` server for that
+- **Per-session MCP server**: each tab's agy gets an `env` server for that
   session, and instructions to use its `read_file`,
-  `write_file` and `shell` tools for all file and shell work. Both agents may
-  call those tools without asking: agy through a `mcp(env/*)` allow rule
-  in `--settings`, Claude Code through `--allowedTools`. agy only reads MCP
+  `write_file` and `shell` tools for all file and shell work. agy may call
+  those tools without asking, through a `mcp(env/*)` allow rule in
+  `--settings`. agy only reads MCP
   servers from `~/.gemini/config/mcp_config.json` and global rules from
-  `~/.gemini/GEMINI.md`, so agy tabs get a temporary `$AGY_HOME` that symlinks
+  `~/.gemini/GEMINI.md`, so each tab gets a temporary `$AGY_HOME` that symlinks
   everything in your home except those files. Its copies add the session's
-  server and instructions to yours. Claude Code tabs get a temporary MCP config
-  file and the instructions as `--append-system-prompt`. Both are deleted when
-  the tab closes. Agents reach the server through `/mcp/<session>` on the demo
+  server and instructions to yours. It is deleted when the tab closes. agy
+  reaches the server through `/mcp/<session>` on the demo
   server, which forwards to `AGY_MCP_URL` and runs `ate-env suspend <session>`
   after each tool call, once no other call for that session is in flight. The MCP tools come from
   the cluster's [env](https://github.com/agent-substrate/env) deployment: the
@@ -59,10 +56,10 @@ npm start            # http://127.0.0.1:3000
 | `AGY_ACTOR_TEMPLATE` | | Actor template for session actors, exported as `ATE_ACTOR_TEMPLATE`. |
 | `AGY_MODEL` | `gemini-3.8-flash-medium` | Model passed to `agy --model` (see `agy models`). |
 | `AGY_MCP_URL` | `http://localhost:7777/v1alpha/envs/{session}/mcp` | Per-session MCP server the demo server forwards to; `{session}` is the session UUID. Empty disables it. |
-| `AGY_MCP_NAME` | `env` | Name of that server in agy and Claude Code. |
+| `AGY_MCP_NAME` | `env` | Name of that server in agy. |
 | `ENV_API_SVC` / `ENV_PF_PORT` | `ate-system/svc/ate-env-api:7777` / `7777` | env API port-forward target. |
 | `ATE_ENV` | `ate-env` | `ate-env` CLI used to create each session's environment. |
-| `DEMO_CWD` | this repo | Working directory for the shell and agents. |
+| `DEMO_CWD` | this repo | Working directory for the shell and agy. |
 | `DEMO_SHELL` | `$SHELL` | Shell to spawn. |
 | `POLL_MS` | `1000` | Delay between cluster polls. |
 | `ATE_ENDPOINT` | | Use an existing ate-api endpoint instead of the built-in port-forward. |
