@@ -26,7 +26,7 @@ npm start            # http://127.0.0.1:3000
   global servers plus `session-env` at `AGY_MCP_URL` for that session. Only agy
   runs with it, and it's deleted when the tab closes. The MCP tools come from
   the cluster's [env](https://github.com/agent-substrate/env) deployment: the
-  server keeps `kubectl port-forward -n ate-env svc/ate-env-api 7777:7777` open
+  server keeps `kubectl port-forward -n ate-system svc/ate-env-api 7777:7777` open
   for the selected cluster and runs `ate-env create <session>` for each tab, so
   `/v1alpha/envs/<session>/mcp` has an environment behind it.
 - **Cluster**: the server polls `kubectl ate get actors -A -o json` and the
@@ -49,7 +49,7 @@ npm start            # http://127.0.0.1:3000
 | `AGY_MODEL` | `gemini-3.8-flash-medium` | Model passed to `agy --model` (see `agy models`). |
 | `AGY_MCP_URL` | `http://localhost:7777/v1alpha/envs/{session}/mcp` | Per-session MCP server; `{session}` is the session UUID. Empty disables it. |
 | `AGY_MCP_NAME` | `session-env` | Name of that server in agy. |
-| `ENV_API_SVC` / `ENV_PF_PORT` | `ate-env/svc/ate-env-api:7777` / `7777` | env API port-forward target. |
+| `ENV_API_SVC` / `ENV_PF_PORT` | `ate-system/svc/ate-env-api:7777` / `7777` | env API port-forward target. |
 | `ATE_ENV` | `ate-env` | `ate-env` CLI used to create each session's environment. |
 | `DEMO_CWD` | this repo | Working directory for the shell and agy. |
 | `DEMO_SHELL` | `$SHELL` | Shell to spawn. |
