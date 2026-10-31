@@ -28,9 +28,8 @@ const viz = new Viz(document.getElementById('viz'));
 
 // Each tab is its own xterm + WebSocket, and so its own PTY on the server.
 // A tab is an agy session identified by a UUID; the server exports it and the
-// actor of the same name into the shell's environment. agy runs with $AGY_HOME,
-// whose mcp_config.json adds the session's MCP server, and $AGY_SETTINGS
-// allows its tools. One expansion per word: zsh doesn't split ${X:+--flag "$X"}.
+// actor of the same name into the shell's environment, and starts agy in it.
+// ▶ agy types this to start it again.
 const AGY_CMD = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--settings} ${AGY_SETTINGS:+"$AGY_SETTINGS"}\r';
 const termBody = document.getElementById('terminal');
 const tabsEl = document.getElementById('term-tabs');
@@ -82,16 +81,12 @@ class Session {
     if (this.el.offsetParent) this.fit.fit();
     const s = new WebSocket(wsURL(`/ws/pty?session=${this.sessionId}&cols=${this.term.cols}&rows=${this.term.rows}`));
     this.sock = s;
-    let first = true;
     s.onopen = () => {
       this.setDead(false);
       if (active === this) this.term.focus();
     };
     s.onmessage = e => {
       this.term.write(e.data);
-      // Wait for the shell's first output (its prompt) before typing.
-      if (first) setTimeout(() => this.send(AGY_CMD), 150);
-      first = false;
     };
     s.onclose = () => {
       if (this.sock !== s) return;

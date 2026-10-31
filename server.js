@@ -31,6 +31,9 @@ const ENV_PF_PORT = Number(process.env.ENV_PF_PORT || 7777);
 const ATE_ENV = process.env.ATE_ENV || 'ate-env';
 const SHELL = process.env.DEMO_SHELL || process.env.SHELL || '/bin/zsh';
 const SHELL_CWD = process.env.DEMO_CWD || ROOT;
+// Each shell starts agy as its first command, then becomes a login shell when agy exits.
+// One expansion per word: zsh doesn't split ${X:+--flag "$X"}.
+const AGY_RUN = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--settings} ${AGY_SETTINGS:+"$AGY_SETTINGS"}; exec "$SHELL" -l';
 const KUBECTL = process.env.KUBECTL || 'kubectl';
 // The kubeconfig context (cluster) every kubectl call targets; switchable from
 // the page. Empty until resolved from `kubectl config current-context`.
@@ -414,12 +417,13 @@ ptyWss.on('connection', (ws, req) => {
       ({ dir: sessionDir, env: agentEnv } = makeSessionDir(session));
     } catch (e) { console.error(`session ${session}: no MCP config: ${e.message}`); }
   }
-  const term = pty.spawn(SHELL, ['-l'], {
+  const term = pty.spawn(SHELL, ['-l', '-i', '-c', AGY_RUN], {
     name: 'xterm-256color',
     cols, rows,
     cwd: SHELL_CWD,
     env: {
       ...process.env,
+      SHELL,
       TERM: 'xterm-256color', COLORTERM: 'truecolor', ATE_DEMO: '1',
       AGY_SESSION_ID: session,
       ATE_ACTOR: session,

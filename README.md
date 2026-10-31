@@ -18,7 +18,8 @@ npm start            # http://127.0.0.1:3000
   `AGY_SESSION_ID`, `ATE_ACTOR` (same value), `ATE_ATESPACE`,
   `ATE_ACTOR_TEMPLATE`, `ATE_CONTEXT`, `ATE_ENDPOINT`, and `AGY_MODEL`, then
   starts `HOME="$AGY_HOME" agy --model "$AGY_MODEL" --settings "$AGY_SETTINGS"`
-  with no initial prompt. The
+  as the shell's first command, with no initial prompt. When agy exits, the
+  tab drops to a login shell, and **▶ agy** starts it again. The
   visualization outlines actors owned by open tabs and labels them with the
   tab name.
 - **Per-session MCP server**: each tab's agy gets an `env` server for that
