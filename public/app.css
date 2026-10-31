@@ -216,9 +216,9 @@ body {
 
 .as-viz__dots {
   display: grid;
-  grid-template-columns: repeat(25, 14px);
+  grid-template-columns: repeat(10, 40px);
   justify-content: space-between;
-  gap: 7px;
+  gap: 10px;
   max-height: 210px; overflow-y: auto; scrollbar-width: none;
   /* Room inside the scroll box for the owned outline and hover scale, which it would clip. */
   padding: 4px; margin: -4px;
@@ -226,18 +226,18 @@ body {
 .as-viz__dots::-webkit-scrollbar { display: none; }
 .as-viz__dot {
   position: relative;
-  width: 14px; height: 14px; border-radius: 3px;
+  width: 40px; height: 40px; border-radius: 6px;
   background: #1f2a22;
   transition: background-color .35s ease, box-shadow .35s ease, transform .35s ease, border-color .35s ease, opacity .35s ease;
 }
 .as-viz__dot--empty { background: transparent; box-shadow: inset 0 0 0 1px #161e18; }
 .as-viz__dot--new { animation: dotPop .5s ease-out; }
 .as-viz__dot--running { background: var(--actor-color, #61D76B); box-shadow: 0 0 10px var(--actor-glow, rgba(97,215,107,.55)); }
-.as-viz__dot--resuming { background: var(--actor-dot-bg, rgba(100,185,222,.28)); border: 2px solid var(--actor-color, #64b9de); box-shadow: 0 0 12px var(--actor-glow, rgba(100,185,222,.65)); }
-.as-viz__dot--suspending { background: var(--actor-dot-bg, rgba(243,241,123,.22)); border: 1.5px dashed var(--actor-color, #F3F17B); box-shadow: 0 0 8px var(--actor-glow, rgba(243,241,123,.45)); opacity: .85; transform: scale(.9); }
+.as-viz__dot--resuming { background: var(--actor-dot-bg, rgba(100,185,222,.28)); border: 3px solid var(--actor-color, #64b9de); box-shadow: 0 0 12px var(--actor-glow, rgba(100,185,222,.65)); }
+.as-viz__dot--suspending { background: var(--actor-dot-bg, rgba(243,241,123,.22)); border: 2px dashed var(--actor-color, #F3F17B); box-shadow: 0 0 8px var(--actor-glow, rgba(243,241,123,.45)); opacity: .85; transform: scale(.9); }
 .as-viz__dot--crashed { background: transparent; border: 1.5px solid #c0504d; }
 .as-viz__dot--snapshot { background: #2a372e; }
-.as-viz__dot.is-paired-hover { transform: scale(1.28); z-index: 2; }
+.as-viz__dot.is-paired-hover { transform: scale(1.12); z-index: 2; }
 /* actor owned by an open agy tab */
 .as-viz__dot--owned { outline: 1.5px solid var(--text-hi); outline-offset: 2px; }
 
@@ -327,7 +327,7 @@ body {
 
 @media (max-width: 1280px) {
   .as-stage { grid-template-columns: minmax(0, 1fr) 520px; padding: 28px 24px 20px; gap: 20px; }
-  .as-viz__dots { grid-template-columns: repeat(20, 14px); gap: 6px; }
+  .as-viz__dots { grid-template-columns: repeat(10, 36px); gap: 8px; }
   .as-viz__router-sub { display: none; }
 }
 @media (max-width: 1000px) {

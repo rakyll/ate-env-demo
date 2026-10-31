@@ -191,7 +191,7 @@ export class Viz {
   // actor dots
 
   columns() {
-    return getComputedStyle(this.dotsEl).gridTemplateColumns.split(' ').length || 25;
+    return getComputedStyle(this.dotsEl).gridTemplateColumns.split(' ').length || 10;
   }
 
   markNew(uid) {
