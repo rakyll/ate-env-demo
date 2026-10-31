@@ -73,6 +73,20 @@ const STATIC = {
 
 let cluster = { ok: false, error: 'not polled yet', updatedAt: null, actors: [], pools: [] };
 
+// Actor states the MCP proxy sees before a poll can: a tool call wakes the
+// session's actor and suspendEnv puts it back, often within one poll.
+const activity = new Map(); // session -> 'running' | 'suspending'
+const withActivity = c => (activity.size
+  ? { ...c, actors: c.actors.map(a => (activity.has(a.name) ? { ...a, state: activity.get(a.name) } : a)) }
+  : c);
+const broadcastCluster = () => broadcast({ type: 'cluster', cluster: withActivity(cluster) });
+
+function setActivity(session, state) {
+  if (state) activity.set(session, state);
+  else activity.delete(session);
+  broadcastCluster();
+}
+
 const ctxArgs = () => (kubeContext ? ['--context', kubeContext] : []);
 
 function run(args) {
@@ -195,7 +209,7 @@ async function poll() {
   }
   if (gen === contextGen) {
     cluster = next;
-    broadcast({ type: 'cluster', cluster });
+    broadcastCluster();
   }
   setTimeout(poll, POLL_MS);
 }
@@ -220,6 +234,7 @@ function switchContext(name) {
   contextGen++;
   cluster = { ok: false, error: 'not polled yet', updatedAt: null, context: name, actors: [], pools: [] };
   envReady.clear();
+  activity.clear();
   tunnels.forEach(t => t.restart());
   broadcast(contextsMsg());
   broadcast({ type: 'cluster', cluster });
@@ -239,7 +254,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/cluster') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    return res.end(JSON.stringify(cluster));
+    return res.end(JSON.stringify(withActivity(cluster)));
   }
   const entry = STATIC[url.pathname];
   if (!entry) { res.writeHead(404); return res.end('not found'); }
@@ -269,14 +284,13 @@ clusterWss.on('connection', async ws => {
     } catch { /* ignore malformed messages */ }
   });
   ws.send(JSON.stringify(await loadContexts()));
-  ws.send(JSON.stringify({ type: 'cluster', cluster }));
+  ws.send(JSON.stringify({ type: 'cluster', cluster: withActivity(cluster) }));
 });
 
 // agy only reads MCP servers from $HOME/.gemini/config/mcp_config.json and
 // global rules from $HOME/.gemini/GEMINI.md, so agy gets an overlay home:
 // symlinks to everything in the real home except those files. The copies add
-// the session's server and SESSION_RULES. Only agy runs with it. Claude Code
-// takes a per-session --mcp-config file and --append-system-prompt instead.
+// the session's server and SESSION_RULES. Only agy runs with it.
 const REAL_HOME = os.homedir();
 const HOMES_DIR = path.join(os.tmpdir(), 'ate-demo-homes');
 fs.rmSync(HOMES_DIR, { recursive: true, force: true }); // rm never follows symlinks
@@ -362,7 +376,10 @@ function proxyMCP(req, res, session) {
   req.on('end', () => {
     const body = Buffer.concat(chunks);
     let toolCall = req.method === 'POST' && isToolCall(body.toString());
-    if (toolCall) toolCallsInFlight.set(session, (toolCallsInFlight.get(session) || 0) + 1);
+    if (toolCall) {
+      toolCallsInFlight.set(session, (toolCallsInFlight.get(session) || 0) + 1);
+      setActivity(session, 'running');
+    }
     const done = () => {
       if (!toolCall) return;
       toolCall = false;
@@ -392,22 +409,21 @@ ptyWss.on('connection', (ws, req) => {
   const cols = Number(url.searchParams.get('cols')) || 100;
   const rows = Number(url.searchParams.get('rows')) || 30;
   const session = url.searchParams.get('session') || '';
-  const agent = url.searchParams.get('agent') || 'agy';
   if (!UUID_RE.test(session)) return ws.close(1008, 'session must be a lowercase UUID');
-  if (!AGENTS.includes(agent)) return ws.close(1008, `agent must be one of ${AGENTS.join(', ')}`);
   let sessionDir = null;
   let agentEnv = { AGY_HOME: REAL_HOME };
   if (AGY_MCP_URL) {
     try {
-      ({ dir: sessionDir, env: agentEnv } = makeSessionDir(session, agent));
+      ({ dir: sessionDir, env: agentEnv } = makeSessionDir(session));
     } catch (e) { console.error(`session ${session}: no MCP config: ${e.message}`); }
   }
-  const term = pty.spawn(SHELL, ['-l'], {
+  const term = pty.spawn(SHELL, ['-l', '-i', '-c', AGY_RUN], {
     name: 'xterm-256color',
     cols, rows,
     cwd: SHELL_CWD,
     env: {
       ...process.env,
+      SHELL,
       TERM: 'xterm-256color', COLORTERM: 'truecolor', ATE_DEMO: '1',
       AGY_SESSION_ID: session,
       ATE_ACTOR: session,
