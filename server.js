@@ -43,6 +43,7 @@ const ACTOR_TEMPLATE = process.env.AGY_ACTOR_TEMPLATE || '';
 const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-medium';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Every agent also gets a per-session MCP server ({session} is the session UUID).
+// Agents reach it through /mcp/<session> on this server (see proxyMCP).
 // Empty AGY_MCP_URL disables it.
 const AGY_MCP_NAME = process.env.AGY_MCP_NAME || 'env';
 const AGY_MCP_URL = process.env.AGY_MCP_URL ?? `http://localhost:${ENV_PF_PORT}/v1alpha/envs/{session}/mcp`;
@@ -229,6 +230,13 @@ function switchContext(name) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+  const mcp = url.pathname.match(/^\/mcp\/([^/]+)$/);
+  if (mcp && AGY_MCP_URL) {
+    // Agents run on this machine; refuse cross-origin pages.
+    const origin = req.headers.origin;
+    if (!UUID_RE.test(mcp[1]) || (origin && new URL(origin).host !== req.headers.host)) { res.writeHead(403); return res.end(); }
+    return proxyMCP(req, res, mcp[1]);
+  }
   if (url.pathname === '/api/cluster') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     return res.end(JSON.stringify(cluster));
@@ -301,7 +309,7 @@ function makeAgyHome(home, url) {
 // Both agents may call the session's MCP tools without asking.
 function makeSessionDir(session, agent) {
   const dir = fs.mkdtempSync(path.join(HOMES_DIR, `${session}-`));
-  const url = AGY_MCP_URL.replaceAll('{session}', session);
+  const url = `http://127.0.0.1:${PORT}/mcp/${session}`;
   if (agent === 'claude') {
     const config = path.join(dir, 'mcp.json');
     fs.writeFileSync(config, JSON.stringify({ mcpServers: { [AGY_MCP_NAME]: { type: 'http', url } } }, null, 2));
@@ -330,6 +338,54 @@ function ensureEnv(session) {
 }
 
 const ensureEnvs = () => openSessions.forEach((_, session) => ensureEnv(session));
+
+// Forwards a session's MCP request to AGY_MCP_URL and suspends the session's
+// actor once no tool calls are in flight, so it only runs while serving one.
+const toolCallsInFlight = new Map(); // session -> count
+
+function isToolCall(body) {
+  try {
+    const msg = JSON.parse(body);
+    return (Array.isArray(msg) ? msg : [msg]).some(m => m?.method === 'tools/call');
+  } catch { return false; }
+}
+
+function suspendEnv(session) {
+  execFile(ATE_ENV, ['suspend', session, '--api', envTunnel.endpoint], { timeout: 120000 }, (err, stdout, stderr) => {
+    if (err) console.error(`session ${session}: ate-env suspend failed: ${`${stdout}${stderr}`.trim() || err.message}`);
+  });
+}
+
+function proxyMCP(req, res, session) {
+  const chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const body = Buffer.concat(chunks);
+    let toolCall = req.method === 'POST' && isToolCall(body.toString());
+    if (toolCall) toolCallsInFlight.set(session, (toolCallsInFlight.get(session) || 0) + 1);
+    const done = () => {
+      if (!toolCall) return;
+      toolCall = false;
+      const n = toolCallsInFlight.get(session) - 1;
+      if (n > 0) return toolCallsInFlight.set(session, n);
+      toolCallsInFlight.delete(session);
+      suspendEnv(session);
+    };
+    const { host, ...headers } = req.headers;
+    const up = http.request(AGY_MCP_URL.replaceAll('{session}', session), { method: req.method, headers }, upRes => {
+      res.writeHead(upRes.statusCode, upRes.headers);
+      upRes.pipe(res);
+      upRes.on('close', done);
+    });
+    up.on('error', e => {
+      done();
+      if (!res.headersSent) res.writeHead(502);
+      res.end(e.message);
+    });
+    res.on('close', () => up.destroy());
+    up.end(body);
+  });
+}
 
 ptyWss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://x');
