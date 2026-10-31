@@ -23,10 +23,10 @@ npm start            # http://127.0.0.1:3000
   with no initial prompt. The
   visualization outlines actors owned by open tabs and labels them with the
   tab name.
-- **Per-session MCP server**: each tab's agent gets `session-env` at
+- **Per-session MCP server**: each tab's agent gets `env` at
   `AGY_MCP_URL` for that session, and instructions to use its `read_file`,
   `write_file` and `shell` tools for all file and shell work. Both agents may
-  call those tools without asking: agy through a `mcp(session-env/*)` allow rule
+  call those tools without asking: agy through a `mcp(env/*)` allow rule
   in `--settings`, Claude Code through `--allowedTools`. agy only reads MCP
   servers from `~/.gemini/config/mcp_config.json` and global rules from
   `~/.gemini/GEMINI.md`, so agy tabs get a temporary `$AGY_HOME` that symlinks
@@ -57,7 +57,7 @@ npm start            # http://127.0.0.1:3000
 | `AGY_ACTOR_TEMPLATE` | | Actor template for session actors, exported as `ATE_ACTOR_TEMPLATE`. |
 | `AGY_MODEL` | `gemini-3.8-flash-medium` | Model passed to `agy --model` (see `agy models`). |
 | `AGY_MCP_URL` | `http://localhost:7777/v1alpha/envs/{session}/mcp` | Per-session MCP server; `{session}` is the session UUID. Empty disables it. |
-| `AGY_MCP_NAME` | `session-env` | Name of that server in agy and Claude Code. |
+| `AGY_MCP_NAME` | `env` | Name of that server in agy and Claude Code. |
 | `ENV_API_SVC` / `ENV_PF_PORT` | `ate-system/svc/ate-env-api:7777` / `7777` | env API port-forward target. |
 | `ATE_ENV` | `ate-env` | `ate-env` CLI used to create each session's environment. |
 | `DEMO_CWD` | this repo | Working directory for the shell and agents. |

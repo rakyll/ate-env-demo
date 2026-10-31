@@ -44,7 +44,7 @@ const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-medium';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Every agent also gets a per-session MCP server ({session} is the session UUID).
 // Empty AGY_MCP_URL disables it.
-const AGY_MCP_NAME = process.env.AGY_MCP_NAME || 'session-env';
+const AGY_MCP_NAME = process.env.AGY_MCP_NAME || 'env';
 const AGY_MCP_URL = process.env.AGY_MCP_URL ?? `http://localhost:${ENV_PF_PORT}/v1alpha/envs/{session}/mcp`;
 const AGENTS = ['agy', 'claude'];
 // Appended to each agent's instructions so its file and shell work runs in the session's actor.
