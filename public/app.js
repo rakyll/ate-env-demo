@@ -27,9 +27,10 @@ await document.fonts.load('13px "Geist Mono"').catch(() => {});
 const viz = new Viz(document.getElementById('viz'));
 
 // Each tab is its own xterm + WebSocket, and so its own PTY on the server.
-// A tab is an agy session identified by a UUID; its agy manages the actor
-// with that name (the server exports the ID and an initial prompt).
-const AGY_CMD = 'agy --model "$AGY_MODEL" -i "$AGY_SESSION_PROMPT"\r';
+// A tab is an agy session identified by a UUID; the server exports it and the
+// actor of the same name into the shell's environment. agy runs with $AGY_HOME,
+// whose mcp_config.json adds the session's MCP server.
+const AGY_CMD = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL"\r';
 const termBody = document.getElementById('terminal');
 const tabsEl = document.getElementById('term-tabs');
 const newTabBtn = document.getElementById('term-new');
@@ -190,13 +191,57 @@ function stopSim() {
   viz.reset();
 }
 
+// Cluster picker: one option per kubeconfig context, GKE contexts
+// (gke_<project>_<zone>_<cluster>) grouped by project.
+const picker = document.getElementById('cluster-select');
+let clusterWs = null;
+let currentContext = null;
+
+function renderContexts(current, contexts) {
+  picker.replaceChildren();
+  const groups = new Map();
+  for (const name of contexts) {
+    const m = name.match(/^gke_([^_]+)_([^_]+)_(.+)$/);
+    const opt = new Option(m ? m[3] : name, name, false, name === current);
+    opt.title = m ? `${m[3]} · ${m[1]} · ${m[2]}` : name;
+    const group = m ? m[1] : '';
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(opt);
+  }
+  for (const [label, opts] of groups) {
+    if (!label) { picker.append(...opts); continue; }
+    const g = document.createElement('optgroup');
+    g.label = label;
+    g.append(...opts);
+    picker.append(g);
+  }
+  picker.title = current ? `kubeconfig context: ${current}` : 'kubeconfig context';
+  picker.hidden = !contexts.length;
+}
+
+picker.onchange = () => {
+  if (clusterWs?.readyState === 1) clusterWs.send(JSON.stringify({ type: 'context', name: picker.value }));
+};
+
 if (params.has('demo')) {
   startSim('simulated · ?demo');
 } else {
   const connectCluster = () => {
     const ws = new WebSocket(wsURL('/ws/cluster'));
+    clusterWs = ws;
     ws.onmessage = e => {
-      const { cluster } = JSON.parse(e.data);
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'contexts') {
+        renderContexts(msg.current, msg.contexts);
+        // Sessions are bound to the old cluster's actors and endpoint; restart them.
+        if (currentContext !== null && msg.current !== currentContext) {
+          viz.reset();
+          for (const s of sessions) s.connect();
+        }
+        currentContext = msg.current;
+        return;
+      }
+      const { cluster } = msg;
       if (cluster.ok) {
         stopSim();
         everLive = true;
@@ -207,6 +252,8 @@ if (params.has('demo')) {
       } else if (!everLive) {
         if (cluster.updatedAt && ++failures >= FAILURES_BEFORE_SIM) startSim(`no cluster: ${cluster.error.slice(0, 60)}`);
         else if (!sim) setConn('down', 'connecting to cluster…');
+      } else if (!cluster.updatedAt) {
+        setConn('down', 'connecting to cluster…');
       } else {
         setConn('down', 'cluster unreachable');
         viz.update({ ...cluster, mode: 'down', detail: cluster.error.slice(0, 70) });

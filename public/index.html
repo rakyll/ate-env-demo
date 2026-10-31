@@ -18,8 +18,11 @@
         <img src="/img/logo.webp" width="63" height="48" alt="Agent Substrate logo">
         <span>Agent Substrate</span>
       </a>
-      <div class="as-navbar__status mono" id="conn-status">
-        <span class="as-status-dot"></span><span data-conn-text>connecting…</span>
+      <div class="as-navbar__right">
+        <select class="as-select mono" id="cluster-select" aria-label="Cluster" hidden></select>
+        <div class="as-navbar__status mono" id="conn-status">
+          <span class="as-status-dot"></span><span data-conn-text>connecting…</span>
+        </div>
       </div>
     </nav>
   </header>
