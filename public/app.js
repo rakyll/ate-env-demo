@@ -51,14 +51,15 @@ const AGY_CMD = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--set
 const termBody = document.getElementById('terminal');
 const tabsEl = document.getElementById('term-tabs');
 const newTabBtn = document.getElementById('term-new');
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const sessions = [];
 let active = null;
 let nextId = 1;
 
 class Session {
-  constructor() {
-    this.id = nextId++;
-    this.sessionId = crypto.randomUUID();
+  constructor(saved) {
+    this.id = saved?.id ?? nextId++;
+    this.sessionId = saved?.sessionId ?? crypto.randomUUID();
     this.label = `agy ${this.id}`;
     this.el = document.createElement('div');
     this.el.className = 'as-term__pane';
@@ -136,12 +137,28 @@ function activate(s) {
   s.fit.fit();
   s.term.focus();
   s.tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  saveTabs();
+}
+
+// Open tabs survive a reload; each reconnects to its session's env.
+function saveTabs() {
+  localStorage.setItem('tabs', JSON.stringify({
+    tabs: sessions.map(s => ({ id: s.id, sessionId: s.sessionId })),
+    active: active?.sessionId,
+  }));
+}
+
+function loadTabs() {
+  try {
+    const { tabs, active } = JSON.parse(localStorage.getItem('tabs'));
+    return { tabs: tabs.filter(t => Number.isInteger(t.id) && UUID_RE.test(t.sessionId)), active };
+  } catch { return { tabs: [] }; }
 }
 
 const syncSessions = () => viz.setSessions(new Map(sessions.map(s => [s.sessionId, s.label])));
 
-function openSession() {
-  const s = new Session();
+function openSession(saved) {
+  const s = new Session(saved);
   sessions.push(s);
   activate(s);
   s.connect();
@@ -154,6 +171,7 @@ function closeSession(s) {
   sessions.splice(i, 1);
   s.dispose();
   syncSessions();
+  saveTabs();
   if (!sessions.length) return openSession();
   if (active === s) activate(sessions[Math.min(i, sessions.length - 1)]);
 }
@@ -175,7 +193,11 @@ document.addEventListener('keydown', e => {
   e.stopPropagation();
 }, true);
 
-openSession();
+const saved = loadTabs();
+nextId = Math.max(0, ...saved.tabs.map(t => t.id)) + 1;
+for (const t of saved.tabs) openSession(t);
+if (!sessions.length) openSession();
+activate(sessions.find(s => s.sessionId === saved.active) || sessions[0]);
 
 const themeBtn = document.getElementById('theme-toggle');
 function setTheme(t) {
