@@ -449,7 +449,8 @@ ptyWss.on('connection', (ws, req) => {
     ensureEnv(session);
   }
 
-  term.onData(d => { if (ws.readyState === 1) ws.send(d); });
+  // agy's banner tags itself "(Googler Dogfood)"; drop it from the demo.
+  term.onData(d => { if (ws.readyState === 1) ws.send(d.replace(/ \(Googler Dogfood\)/g, '')); });
   term.onExit(({ exitCode }) => {
     if (ws.readyState === 1) ws.send(`\r\n\x1b[2m[process exited with code ${exitCode}]\x1b[0m\r\n`);
     ws.close();
