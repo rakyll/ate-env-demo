@@ -54,6 +54,8 @@ const newTabBtn = document.getElementById('term-new');
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const sessions = [];
 let active = null;
+const DEFAULT_FONT_SIZE = 13.5;
+let fontSize = Number(localStorage.getItem('termFontSize')) || DEFAULT_FONT_SIZE;
 let nextId = 1;
 
 class Session {
@@ -67,7 +69,7 @@ class Session {
 
     this.term = new window.Terminal({
       fontFamily: '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 13.5,
+      fontSize,
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
@@ -176,17 +178,31 @@ function closeSession(s) {
   if (active === s) activate(sessions[Math.min(i, sessions.length - 1)]);
 }
 
+// Applies to every tab; hidden tabs refit when activated.
+function setFontSize(size) {
+  fontSize = Math.min(24, Math.max(10, size));
+  localStorage.setItem('termFontSize', fontSize);
+  for (const s of sessions) s.term.options.fontSize = fontSize;
+  active?.fit.fit();
+}
+
 new ResizeObserver(() => active?.fit.fit()).observe(termBody);
+document.getElementById('term-font-down').onclick = () => setFontSize(fontSize - 1);
+document.getElementById('term-font-up').onclick = () => setFontSize(fontSize + 1);
 newTabBtn.onclick = () => openSession();
 document.getElementById('term-restart').onclick = () => active?.connect();
 document.getElementById('term-run-agy').onclick = () => { active?.send(AGY_CMD); active?.term.focus(); };
 
-// Alt+T new session, Alt+W close, Alt+1..9 switch. (Cmd/Ctrl+T belong to the browser.)
+// Alt+T new session, Alt+W close, Alt+1..9 switch, Alt+=/-/0 text size.
+// (Cmd/Ctrl+T belong to the browser.)
 document.addEventListener('keydown', e => {
   if (!e.altKey || e.metaKey || e.ctrlKey) return;
   const n = Number(e.code.replace('Digit', ''));
   if (e.code === 'KeyT') openSession();
   else if (e.code === 'KeyW' && active) closeSession(active);
+  else if (e.code === 'Equal') setFontSize(fontSize + 1);
+  else if (e.code === 'Minus') setFontSize(fontSize - 1);
+  else if (e.code === 'Digit0') setFontSize(DEFAULT_FONT_SIZE);
   else if (n >= 1 && n <= 9 && sessions[n - 1]) activate(sessions[n - 1]);
   else return;
   e.preventDefault();
