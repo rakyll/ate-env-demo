@@ -36,7 +36,9 @@ const SHELL_CWD = process.env.DEMO_CWD || ROOT;
 const AGY_RUN = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--settings} ${AGY_SETTINGS:+"$AGY_SETTINGS"}; exec "$SHELL" -l';
 const KUBECTL = process.env.KUBECTL || 'kubectl';
 // The kubeconfig context (cluster) every kubectl call targets; switchable from
-// the page. Empty until resolved from `kubectl config current-context`.
+// the page. Starts on DEFAULT_CONTEXT if the kubeconfig has it, else on
+// `kubectl config current-context`.
+const DEFAULT_CONTEXT = 'kind-env';
 let kubeContext = process.env.KUBE_CONTEXT || '';
 let kubeContexts = [];
 let contextGen = 0; // bumped on switch so in-flight polls of the old cluster are dropped
@@ -224,6 +226,7 @@ async function poll() {
 async function loadContexts() {
   const names = await new Promise(resolve =>
     execFile(KUBECTL, ['config', 'get-contexts', '-o', 'name'], (err, out) => resolve(err ? [] : out.split('\n').filter(Boolean))));
+  if (!kubeContext && names.includes(DEFAULT_CONTEXT)) kubeContext = DEFAULT_CONTEXT;
   if (!kubeContext) {
     kubeContext = await new Promise(resolve =>
       execFile(KUBECTL, ['config', 'current-context'], (err, out) => resolve(err ? '' : out.trim())));
