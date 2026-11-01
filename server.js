@@ -134,14 +134,19 @@ class Tunnel {
     });
   }
 
-  // Wait for the old tunnel to release the local port before reopening it.
+  // Wait for the old tunnel to release the local port before reopening it,
+  // including one still exiting from a previous switch.
   restart() {
-    const old = this.proc;
+    const old = this.proc || this.exiting;
     this.proc = null;
     this.ready = false;
     this.failures = 0;
-    if (old && old.exitCode === null) {
-      old.once('exit', () => { if (!this.proc) this.start(); });
+    if (old && old.exitCode === null && old.signalCode === null) {
+      this.exiting = old;
+      old.once('exit', () => {
+        if (this.exiting === old) this.exiting = null;
+        if (!this.proc) this.start();
+      });
       old.kill();
     } else this.start();
   }
