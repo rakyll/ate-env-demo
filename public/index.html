@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Ubuntu:wght@500&display=swap">
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/app.css">
+  <script>if (localStorage.getItem('theme') === 'light') document.documentElement.dataset.theme = 'light';</script>
 </head>
 <body>
   <header class="as-header">
@@ -20,6 +21,7 @@
       </a>
       <div class="as-navbar__right">
         <select class="as-select mono" id="cluster-select" aria-label="Cluster" hidden></select>
+        <button type="button" class="as-theme" id="theme-toggle" aria-label="Toggle light theme"></button>
         <div class="as-navbar__status mono" id="conn-status">
           <span class="as-status-dot"></span><span data-conn-text>connecting…</span>
         </div>
@@ -95,7 +97,7 @@
 
       <div class="as-viz__legend">
         <span class="as-viz__legend-title">Actor state:</span>
-        <span><span class="as-viz__swatch-group" aria-hidden="true"><i class="as-viz__swatch" style="background:#61d76b"></i><i class="as-viz__swatch" style="background:#64b9de"></i><i class="as-viz__swatch" style="background:#f3f17b"></i><i class="as-viz__swatch" style="background:#e77cb2"></i></span>Running</span>
+        <span><span class="as-viz__swatch-group" aria-hidden="true"><i class="as-viz__swatch" data-actor-color="green"></i><i class="as-viz__swatch" data-actor-color="blue"></i><i class="as-viz__swatch" data-actor-color="yellow"></i><i class="as-viz__swatch" data-actor-color="red"></i></span>Running</span>
         <span><i class="as-viz__swatch as-viz__swatch--resuming"></i>Resuming</span>
         <span><i class="as-viz__swatch as-viz__swatch--suspending"></i>Suspending</span>
         <span><i class="as-viz__swatch as-viz__swatch--snapshot"></i>Suspended (0 pods)</span>

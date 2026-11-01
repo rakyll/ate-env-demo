@@ -9,13 +9,6 @@ const LINGER_MS = 900;      // keep a vacated pod visibly "suspending" this long
 const RESUME_FLASH_MS = 950; // show resume animation when a poll skips RESUMING
 const MAX_EVENTS = 80;
 
-const ROUTER_COLORS = {
-  green: ['#61D76B', 'rgba(97,215,107,.45)'],
-  blue: ['#64b9de', 'rgba(100,185,222,.45)'],
-  yellow: ['#F3F17B', 'rgba(243,241,123,.45)'],
-  red: ['#E77CB2', 'rgba(231,124,178,.45)'],
-};
-
 function hash(s) {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
@@ -333,9 +326,7 @@ export class Viz {
   // router + events
 
   route(a) {
-    const [c, g] = ROUTER_COLORS[a.color] || ROUTER_COLORS.blue;
-    this.routerEl.style.setProperty('--router-accent', c);
-    this.routerEl.style.setProperty('--router-glow', g);
+    this.routerEl.dataset.actorColor = a.color;
     this.routerEl.classList.add('is-routing');
     this.$('[data-viz-router-sub]').textContent = `routing → actor/${a.name.slice(0, 18)}${a.name.length > 18 ? '…' : ''}`;
     clearTimeout(this.routeTimer);

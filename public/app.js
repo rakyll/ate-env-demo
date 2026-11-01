@@ -6,7 +6,8 @@ const params = new URLSearchParams(location.search);
 // ---------------------------------------------------------------------------
 // Terminal (left)
 
-const THEME = {
+const THEMES = {};
+THEMES.dark = {
   background: '#0e130f',
   foreground: '#e4ebe6',
   cursor: '#64d86b',
@@ -21,6 +22,22 @@ const THEME = {
   cyan: '#6fd6c7', brightCyan: '#a2e8de',
   white: '#c8d3cb', brightWhite: '#f4f8f5',
 };
+THEMES.light = {
+  background: '#ffffff',
+  foreground: '#1b231d',
+  cursor: '#23963a',
+  cursorAccent: '#ffffff',
+  selectionBackground: 'rgba(35, 150, 58, 0.2)',
+  black: '#1b231d', brightBlack: '#86948b',
+  red: '#c63d82', brightRed: '#a8316c',
+  green: '#2e9e3d', brightGreen: '#23802f',
+  yellow: '#9a7f00', brightYellow: '#806900',
+  blue: '#2a84b0', brightBlue: '#1f6b91',
+  magenta: '#8a5fd6', brightMagenta: '#6f45bb',
+  cyan: '#1f9c8c', brightCyan: '#177d70',
+  white: '#5b695f', brightWhite: '#2f3a32',
+};
+const theme = () => document.documentElement.dataset.theme || 'dark';
 
 await document.fonts.load('13px "Geist Mono"').catch(() => {});
 
@@ -54,7 +71,7 @@ class Session {
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 10000,
-      theme: THEME,
+      theme: THEMES[theme()],
     });
     this.fit = new window.FitAddon.FitAddon();
     this.term.loadAddon(this.fit);
@@ -159,6 +176,18 @@ document.addEventListener('keydown', e => {
 }, true);
 
 openSession();
+
+const themeBtn = document.getElementById('theme-toggle');
+function setTheme(t) {
+  if (t === 'light') document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  localStorage.setItem('theme', t);
+  themeBtn.textContent = t === 'light' ? '☾' : '☀';
+  themeBtn.title = t === 'light' ? 'Dark theme' : 'Light theme';
+  for (const s of sessions) s.term.options.theme = THEMES[t];
+}
+setTheme(theme());
+themeBtn.onclick = () => setTheme(theme() === 'light' ? 'dark' : 'light');
 
 // ---------------------------------------------------------------------------
 // Cluster visualization (right)
