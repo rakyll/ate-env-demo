@@ -26,7 +26,7 @@ const PF_TARGET = process.env.ATE_API_SVC || 'ate-system/svc/api:443';
 const PF_LOCAL_PORT = Number(process.env.ATE_PF_PORT || 18443);
 // The env service (github.com/agent-substrate/env) serves each session's MCP
 // tools; it is tunneled from the selected cluster like ate-api.
-const ENV_API_SVC = process.env.ENV_API_SVC || 'ate-system/svc/ate-env-api:7777';
+const ENV_API_SVC = process.env.ENV_API_SVC || 'ate-env/svc/ate-env-api:7777';
 const ENV_PF_PORT = Number(process.env.ENV_PF_PORT || 7777);
 const ATE_ENV = process.env.ATE_ENV || 'ate-env';
 const SHELL = process.env.DEMO_SHELL || process.env.SHELL || '/bin/zsh';
