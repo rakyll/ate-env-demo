@@ -49,6 +49,7 @@ export class Viz {
     this.loaded = false;
     this.pools = [];
     this.sessions = new Map(); // actor name -> tab label, for actors owned by open agy tabs
+    this.onActorClick = null;  // set by the page; called with the clicked dot's or pod's actor
 
     this.tip = el('div', 'as-tip');
     this.tip.hidden = true;
@@ -369,6 +370,7 @@ export class Viz {
         this.tip.innerHTML = '';
         const owner = this.sessions.get(a.name);
         this.tip.append(`actor/${a.name}`, el('br'), el('span', null, `${owner ? owner + ' · ' : ''}${a.state}${a.workerPod ? ' · ' + a.workerPod : ''}${a.template ? ' · ' + a.template : ''}`));
+        if (this.onActorClick) this.tip.append(el('br'), el('span', null, 'click for traces'));
         this.tip.hidden = false;
         const r = t.getBoundingClientRect();
         const w = this.tip.offsetWidth;
@@ -377,6 +379,14 @@ export class Viz {
       } else this.tip.hidden = true;
     };
     this.root.addEventListener('mouseover', over);
+    this.root.addEventListener('click', e => {
+      const t = e.target.closest('.as-viz__dot[data-uid], .as-viz__pod[data-uid]');
+      const a = t && this.actors.get(t.dataset.uid);
+      if (a && this.onActorClick) {
+        this.tip.hidden = true;
+        this.onActorClick(a);
+      }
+    });
     this.root.addEventListener('mouseleave', () => {
       if (this.hoverUid) this.pair(this.hoverUid, false);
       this.hoverUid = null;

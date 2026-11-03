@@ -29,6 +29,12 @@ const PF_LOCAL_PORT = Number(process.env.ATE_PF_PORT || 18443);
 const ENV_API_SVC = process.env.ENV_API_SVC || 'ate-env/svc/ate-env-api:7777';
 const ENV_PF_PORT = Number(process.env.ENV_PF_PORT || 7777);
 const ATE_ENV = process.env.ATE_ENV || 'ate-env';
+// Clicking an actor shows its traces from the cluster's Jaeger (v2, query API v3).
+const JAEGER_SVC = process.env.JAEGER_SVC || 'otel-system/svc/jaeger:16686';
+const JAEGER_PF_PORT = Number(process.env.JAEGER_PF_PORT || 18686);
+const TRACE_LOOKBACK_MS = 6 * 3600 * 1000;
+// The trace view shows an actor's lifecycle; reads and snapshot reports are noise.
+const LIFECYCLE_OPS = new Set(['CreateActor', 'SuspendActor', 'ResumeActor']);
 const SHELL = process.env.DEMO_SHELL || process.env.SHELL || '/bin/zsh';
 const SHELL_CWD = process.env.DEMO_CWD || ROOT;
 // Each shell starts agy as its first command, then becomes a login shell when agy exits.
@@ -65,6 +71,7 @@ const STATIC = {
   '/app.css': ['public/app.css', 'text/css'],
   '/app.js': ['public/app.js', 'text/javascript'],
   '/viz.js': ['public/viz.js', 'text/javascript'],
+  '/trace.js': ['public/trace.js', 'text/javascript'],
   '/img/logo.webp': ['public/img/logo.webp', 'image/webp'],
   '/img/mascot.webp': ['public/img/mascot.webp', 'image/webp'],
   '/img/favicon.png': ['public/img/favicon.png', 'image/png'],
@@ -159,7 +166,8 @@ class Tunnel {
 const apiTunnel = new Tunnel('ate-api', PF_TARGET, PF_LOCAL_PORT);
 const ateEndpoint = () => ATE_ENDPOINT || apiTunnel.endpoint;
 const envTunnel = new Tunnel('ate-env-api', ENV_API_SVC, ENV_PF_PORT, () => ensureEnvs());
-const tunnels = AGY_MCP_URL ? [envTunnel] : [];
+const jaegerTunnel = new Tunnel('jaeger', JAEGER_SVC, JAEGER_PF_PORT);
+const tunnels = AGY_MCP_URL ? [envTunnel, jaegerTunnel] : [jaegerTunnel];
 if (PORT_FORWARD) tunnels.push(apiTunnel);
 process.on('exit', () => tunnels.forEach(t => t.proc?.kill()));
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
@@ -268,6 +276,87 @@ function switchContext(name) {
 }
 
 // ---------------------------------------------------------------------------
+// Traces: ateapi tags its spans with the actor, so searching its spans by
+// ate.actor.name finds every trace that touched the actor (create, resume
+// through the router, suspend, ...). Jaeger returns OTLP JSON.
+
+async function jaeger(pathname, query = {}) {
+  if (!jaegerTunnel.ready) throw new Error(`no Jaeger at ${JAEGER_SVC} in ${kubeContext || 'this cluster'}`);
+  const url = new URL(pathname, `http://${jaegerTunnel.endpoint}`);
+  for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 404 || body.error?.httpCode === 404) return [];
+  if (!res.ok) throw new Error(body.error?.message || `Jaeger: HTTP ${res.status}`);
+  return otlpSpans(body.result?.resourceSpans || []);
+}
+
+const attrValue = v => v.stringValue ?? v.boolValue ?? v.doubleValue ?? (v.intValue != null ? Number(v.intValue) : JSON.stringify(v));
+const micros = ns => Number(BigInt(ns) / 1000n);
+
+function otlpSpans(resourceSpans) {
+  const spans = [];
+  for (const r of resourceSpans) {
+    const service = r.resource?.attributes?.find(a => a.key === 'service.name')?.value.stringValue || '?';
+    for (const ss of r.scopeSpans || []) {
+      for (const s of ss.spans || []) {
+        spans.push({
+          traceId: s.traceId,
+          id: s.spanId,
+          parent: s.parentSpanId || null,
+          service,
+          name: s.name,
+          start: micros(s.startTimeUnixNano),
+          end: micros(s.endTimeUnixNano),
+          error: s.status?.code === 2,
+          attrs: Object.fromEntries((s.attributes || []).filter(a => !a.key.startsWith('@')).map(a => [a.key, attrValue(a.value)])),
+        });
+      }
+    }
+  }
+  return spans;
+}
+
+async function actorTraces(actor, atespace) {
+  const attrs = { 'ate.actor.name': actor, ...(atespace && { 'ate.atespace': atespace }) };
+  const now = Date.now();
+  const spans = await jaeger('/api/v3/traces', {
+    'query.service_name': 'ateapi',
+    'query.attributes': JSON.stringify(attrs),
+    'query.start_time_min': new Date(now - TRACE_LOOKBACK_MS).toISOString(),
+    'query.start_time_max': new Date(now + 60000).toISOString(),
+    'query.search_depth': '200',
+  });
+  const byTrace = new Map();
+  for (const s of spans) {
+    if (!byTrace.has(s.traceId)) byTrace.set(s.traceId, []);
+    byTrace.get(s.traceId).push(s);
+  }
+  // One event per lifecycle call: the ateapi RPC span, plus who started the
+  // trace (the router resumes on ingress, the controller suspends idle actors).
+  const events = [];
+  for (const [id, list] of byTrace) {
+    const op = list.filter(s => s.service === 'ateapi' && s.attrs['rpc.method']).sort((a, b) => a.start - b.start)[0];
+    const name = op?.name.replace(/^.*\//, '');
+    if (!LIFECYCLE_OPS.has(name)) continue;
+    const ids = new Set(list.map(s => s.id));
+    const root = list.filter(s => !ids.has(s.parent)).sort((a, b) => a.start - b.start)[0];
+    // The router calls ResumeActor before every request it routes, mostly to
+    // look up the worker; only the calls that reach atelet actually resume.
+    const lookup = name === 'ResumeActor' && !list.some(s => s.name === 'step.CallAteletRestore');
+    // The request behind it, e.g. "GetProcess" for a router-initiated resume.
+    const via = root.attrs['grpc.path']?.replace(/^.*\//, '') || (root.attrs['http.method'] && `${root.attrs['http.method']} ${new URL(root.attrs['http.url'] || '/', 'http://x').pathname}`) || '';
+    events.push({ id, name, start: op.start, duration: op.end - op.start, by: root.service, via, lookup, error: op.error, attrs: op.attrs });
+  }
+  return events.sort((a, b) => a.start - b.start);
+}
+
+function sendJSON(res, status, body) {
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+
+// ---------------------------------------------------------------------------
 // HTTP
 
 const server = http.createServer((req, res) => {
@@ -278,6 +367,12 @@ const server = http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!UUID_RE.test(mcp[1]) || (origin && new URL(origin).host !== req.headers.host)) { res.writeHead(403); return res.end(); }
     return proxyMCP(req, res, mcp[1]);
+  }
+  if (url.pathname === '/api/traces') {
+    const actor = url.searchParams.get('actor') || '';
+    const atespace = url.searchParams.get('atespace') || '';
+    if (!/^[\w.-]+$/.test(actor) || !/^[\w.-]*$/.test(atespace)) return sendJSON(res, 400, { error: 'bad actor' });
+    return actorTraces(actor, atespace).then(events => sendJSON(res, 200, { events }), e => sendJSON(res, 502, { error: e.message }));
   }
   if (url.pathname === '/api/cluster') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });

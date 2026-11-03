@@ -1,4 +1,5 @@
 import { Viz, createSimulator } from './viz.js';
+import { TraceView } from './trace.js';
 
 const wsURL = p => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${p}`;
 const params = new URLSearchParams(location.search);
@@ -44,6 +45,8 @@ const theme = () => document.documentElement.dataset.theme || 'dark';
 await document.fonts.load('13px "Geist Mono"').catch(() => {});
 
 const viz = new Viz(document.getElementById('viz'));
+const traceDialog = document.getElementById('trace');
+const traceView = new TraceView(traceDialog);
 
 // Each tab is its own xterm + WebSocket, and so its own PTY on the server.
 // A tab is an agy session identified by a UUID; the server exports it and the
@@ -308,6 +311,10 @@ function renderContexts(current, contexts) {
 picker.onchange = () => {
   if (clusterWs?.readyState === 1) clusterWs.send(JSON.stringify({ type: 'context', name: picker.value }));
 };
+
+// Simulated actors have no traces, so only live actors open the trace view.
+viz.onActorClick = a => { if (!sim) traceView.open(a); };
+traceDialog.addEventListener('close', () => active?.term.focus());
 
 if (params.has('demo')) {
   startSim('simulated · ?demo');
