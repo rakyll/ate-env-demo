@@ -22,20 +22,22 @@ THEMES.dark = {
   cyan: '#6fd6c7', brightCyan: '#a2e8de',
   white: '#c8d3cb', brightWhite: '#f4f8f5',
 };
+// On white, normal colors are ≥5:1 and the brighter variants ≥4:1; agy draws
+// its secondary text in bright black.
 THEMES.light = {
   background: '#ffffff',
   foreground: '#1b231d',
-  cursor: '#23963a',
+  cursor: '#1c8a32',
   cursorAccent: '#ffffff',
-  selectionBackground: 'rgba(35, 150, 58, 0.2)',
-  black: '#1b231d', brightBlack: '#86948b',
-  red: '#c63d82', brightRed: '#a8316c',
-  green: '#2e9e3d', brightGreen: '#23802f',
-  yellow: '#9a7f00', brightYellow: '#806900',
-  blue: '#2a84b0', brightBlue: '#1f6b91',
-  magenta: '#8a5fd6', brightMagenta: '#6f45bb',
-  cyan: '#1f9c8c', brightCyan: '#177d70',
-  white: '#5b695f', brightWhite: '#2f3a32',
+  selectionBackground: 'rgba(28, 138, 50, 0.18)',
+  black: '#1b231d', brightBlack: '#5f6e64',
+  red: '#b4286f', brightRed: '#d0458c',
+  green: '#1c7f2f', brightGreen: '#2a9a3c',
+  yellow: '#8f5f00', brightYellow: '#a97300',
+  blue: '#1667a8', brightBlue: '#2a7fc4',
+  magenta: '#7443c9', brightMagenta: '#8d5fe0',
+  cyan: '#0e7468', brightCyan: '#178c7e',
+  white: '#6b7a70', brightWhite: '#46524a',
 };
 const theme = () => document.documentElement.dataset.theme || 'dark';
 

@@ -44,23 +44,23 @@
   --text: #1b231d;
   --text-hi: #0b100c;
   --text-2: #2f3a32;
-  --muted: #5b695f;
-  --dim: #86948b;
-  --accent: #23963a;
-  --accent-hi: #1a7a2e;
-  --green: #2e9e3d;
-  --blue: #2a84b0;
-  --yellow: #a88a00;
-  --red: #c63d82;
+  --muted: #56645a;
+  --dim: #6b7a70;
+  --accent: #1c8a32;
+  --accent-hi: #16702a;
+  --green: #1c7f2f;
+  --blue: #1667a8;
+  --yellow: #946200;
+  --red: #b4286f;
   --error: #c4433f;
   --nav-bg: rgba(245, 247, 245, .88);
   --hover: rgba(0, 0, 0, .04);
   --shadow: rgba(0, 0, 0, .12);
   --dot: #dde4df;
-  --dot-empty: #e6ebe7;
-  --idle: #c9d3cc;
+  --dot-empty: #d5ddd8;
+  --idle: #bccac1;
   --pod-suspending: #f2f5f3;
-  --pod-sub: #6b7a70;
+  --pod-sub: #5f6e64;
   --tip-bg: #ffffff;
 }
 
@@ -252,7 +252,7 @@ body {
 /* Darker actor colors that stay readable on a light background. */
 [data-theme=light] .as-viz [data-actor-color=green]  { --actor-color: #2e9e3d; --actor-glow: rgba(46,158,61,.35);  --actor-bg: rgba(46,158,61,.07);  --actor-dot-bg: rgba(46,158,61,.2);  --actor-border: rgba(46,158,61,.45); }
 [data-theme=light] .as-viz [data-actor-color=blue]   { --actor-color: #2a84b0; --actor-glow: rgba(42,132,176,.35); --actor-bg: rgba(42,132,176,.07); --actor-dot-bg: rgba(42,132,176,.2); --actor-border: rgba(42,132,176,.45); }
-[data-theme=light] .as-viz [data-actor-color=yellow] { --actor-color: #b39200; --actor-glow: rgba(179,146,0,.35);   --actor-bg: rgba(179,146,0,.07);   --actor-dot-bg: rgba(179,146,0,.2);   --actor-border: rgba(179,146,0,.45); }
+[data-theme=light] .as-viz [data-actor-color=yellow] { --actor-color: #c88a00; --actor-glow: rgba(200,138,0,.35);   --actor-bg: rgba(200,138,0,.07);   --actor-dot-bg: rgba(200,138,0,.2);   --actor-border: rgba(200,138,0,.45); }
 [data-theme=light] .as-viz [data-actor-color=red]    { --actor-color: #c63d82; --actor-glow: rgba(198,61,130,.35); --actor-bg: rgba(198,61,130,.07); --actor-dot-bg: rgba(198,61,130,.2); --actor-border: rgba(198,61,130,.45); }
 
 .as-viz__dots {
@@ -306,6 +306,7 @@ body {
   transition: background-color .35s ease, border-color .35s ease, box-shadow .35s ease, opacity .35s ease;
 }
 .as-viz__pod--idle { opacity: .55; }
+[data-theme=light] .as-viz__pod--idle { opacity: .8; }
 .as-viz__pod--idle .as-viz__pod-name { color: var(--dim); }
 .as-viz__pod--running .as-viz__pod-name { color: var(--actor-color, #61D76B); }
 .as-viz__pod--resuming { background: var(--actor-bg, #0f1a20); border-color: var(--actor-border, #2b5468); }
