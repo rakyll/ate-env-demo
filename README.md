@@ -25,7 +25,7 @@ shows a simulated one (force it with `/?demo`).
 | --- | --- | --- |
 | `KUBE_CONTEXT` | current-context | Cluster to start on. |
 | `ATESPACE` | all | Limit the view to one atespace. |
-| `AGY_MODEL` | `gemini-3.8-flash-medium` | Model passed to `agy --model`. |
+| `AGY_MODEL` | `gemini-3.8-flash-low` | Model passed to `agy --model`. |
 | `PORT` / `HOST` | `3000` / `127.0.0.1` | The shell runs as you, so only bind to localhost. |
 
 See the top of `server.js` for the rest.

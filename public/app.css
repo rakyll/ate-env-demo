@@ -126,6 +126,7 @@ body {
 .as-select:hover, .as-select:focus-visible { color: var(--text); background-color: var(--surface-2); border-color: var(--border-hi); outline: none; }
 .as-select option, .as-select optgroup { background: var(--surface); color: var(--text); }
 .as-select[hidden] { display: none; }
+.as-select--chip { height: 28px; max-width: 220px; border-radius: 7px; }
 .as-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
 .as-navbar__status[data-state=live] .as-status-dot { background: var(--accent); box-shadow: 0 0 8px rgba(100, 216, 107, .6); }
 .as-navbar__status[data-state=demo] .as-status-dot { background: var(--yellow); }

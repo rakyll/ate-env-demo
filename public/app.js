@@ -46,8 +46,12 @@ const viz = new Viz(document.getElementById('viz'));
 // Each tab is its own xterm + WebSocket, and so its own PTY on the server.
 // A tab is an agy session identified by a UUID; the server exports it and the
 // actor of the same name into the shell's environment, and starts agy in it.
-// ▶ agy types this to start it again.
-const AGY_CMD = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--settings} ${AGY_SETTINGS:+"$AGY_SETTINGS"}\r';
+// ▶ agy types this to start it again, with the picked model if there is one
+// (option values are model ids the server listed, so they need no quoting).
+const agyCmd = () => `HOME="$AGY_HOME" agy --model ${modelPicker.value || '"$AGY_MODEL"'} \${AGY_SETTINGS:+--settings} \${AGY_SETTINGS:+"$AGY_SETTINGS"}\r`;
+// The model new shells start agy with; empty means the server's default.
+const modelPicker = document.getElementById('model-select');
+let agyModel = localStorage.getItem('agyModel') || '';
 const termBody = document.getElementById('terminal');
 const tabsEl = document.getElementById('term-tabs');
 const newTabBtn = document.getElementById('term-new');
@@ -99,7 +103,7 @@ class Session {
     this.sock?.close();
     this.term.reset();
     if (this.el.offsetParent) this.fit.fit();
-    const s = new WebSocket(wsURL(`/ws/pty?session=${this.sessionId}&cols=${this.term.cols}&rows=${this.term.rows}`));
+    const s = new WebSocket(wsURL(`/ws/pty?session=${this.sessionId}&cols=${this.term.cols}&rows=${this.term.rows}&model=${encodeURIComponent(agyModel)}`));
     this.sock = s;
     s.onopen = () => {
       this.setDead(false);
@@ -191,7 +195,24 @@ document.getElementById('term-font-down').onclick = () => setFontSize(fontSize -
 document.getElementById('term-font-up').onclick = () => setFontSize(fontSize + 1);
 newTabBtn.onclick = () => openSession();
 document.getElementById('term-restart').onclick = () => active?.connect();
-document.getElementById('term-run-agy').onclick = () => { active?.send(AGY_CMD); active?.term.focus(); };
+document.getElementById('term-run-agy').onclick = () => { active?.send(agyCmd()); active?.term.focus(); };
+
+// Model picker: agy reads its model at startup, so a pick applies to new
+// tabs, ↻ restart and ▶ agy, not to agy sessions already running.
+function renderModels({ default: def, models }) {
+  if (models.length && !models.some(m => m.id === def)) models = [{ id: def, label: def }, ...models];
+  if (!models.some(m => m.id === agyModel)) agyModel = def;
+  modelPicker.replaceChildren(...models.map(m =>
+    new Option(m.id === def ? `${m.label} · default` : m.label, m.id, false, m.id === agyModel)));
+  modelPicker.title = 'agy model for new sessions';
+  modelPicker.hidden = !models.length;
+}
+
+modelPicker.onchange = () => {
+  agyModel = modelPicker.value;
+  localStorage.setItem('agyModel', agyModel);
+  active?.term.focus();
+};
 
 // Alt+T new session, Alt+W close, Alt+1..9 switch, Alt+=/-/0 text size.
 // (Cmd/Ctrl+T belong to the browser.)
@@ -294,6 +315,7 @@ if (params.has('demo')) {
     clusterWs = ws;
     ws.onmessage = e => {
       const msg = JSON.parse(e.data);
+      if (msg.type === 'models') return renderModels(msg);
       if (msg.type === 'contexts') {
         renderContexts(msg.current, msg.contexts);
         // Sessions are bound to the old cluster's actors and endpoint; restart them.

@@ -45,7 +45,9 @@ let contextGen = 0; // bumped on switch so in-flight polls of the old cluster ar
 // Each terminal tab runs agy; its shell exports the actor it owns (named by its UUID).
 const ACTOR_ATESPACE = process.env.AGY_ACTOR_ATESPACE || ATESPACE || 'ate-ant';
 const ACTOR_TEMPLATE = process.env.AGY_ACTOR_TEMPLATE || '';
-const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-medium';
+const AGY_MODEL = process.env.AGY_MODEL || 'gemini-3.8-flash-low';
+// The page's model picker offers agy's Flash models; a tab may start agy with any of them.
+let agyModels = [];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Every tab also gets a per-session MCP server ({session} is the session UUID).
 // agy reaches it through /mcp/<session> on this server (see proxyMCP).
@@ -237,6 +239,21 @@ async function loadContexts() {
 
 const contextsMsg = () => ({ type: 'contexts', current: kubeContext, contexts: kubeContexts });
 
+// `agy models` prints "<id>\t<label>" lines after a progress line. Only the
+// Flash models are offered; the others are too slow for a live demo.
+function loadModels() {
+  execFile('agy', ['models'], { timeout: 60000 }, (err, out) => {
+    if (err) return console.error(`agy models failed: ${err.message}`);
+    agyModels = out.split('\n').map(l => l.split('\t'))
+      .filter(([id, label]) => label && /^[\w.-]*flash[\w.-]*$/.test(id))
+      .map(([id, label]) => ({ id, label: label.trim() }));
+    broadcast(modelsMsg());
+  });
+}
+
+const modelsMsg = () => ({ type: 'models', default: AGY_MODEL, models: agyModels });
+const pickModel = m => (agyModels.some(x => x.id === m) ? m : AGY_MODEL);
+
 function switchContext(name) {
   if (name === kubeContext || !kubeContexts.includes(name)) return;
   console.log(`switching cluster: ${kubeContext || '(default)'} → ${name}`);
@@ -293,6 +310,7 @@ clusterWss.on('connection', async ws => {
       if (msg.type === 'context') switchContext(msg.name);
     } catch { /* ignore malformed messages */ }
   });
+  ws.send(JSON.stringify(modelsMsg()));
   ws.send(JSON.stringify(await loadContexts()));
   ws.send(JSON.stringify({ type: 'cluster', cluster: withActivity(cluster) }));
 });
@@ -418,6 +436,7 @@ ptyWss.on('connection', (ws, req) => {
   const rows = Number(url.searchParams.get('rows')) || 30;
   const session = url.searchParams.get('session') || '';
   if (!UUID_RE.test(session)) return ws.close(1008, 'session must be a lowercase UUID');
+  const model = pickModel(url.searchParams.get('model'));
   let sessionDir = null;
   let agentEnv = { AGY_HOME: REAL_HOME };
   if (AGY_MCP_URL) {
@@ -439,11 +458,11 @@ ptyWss.on('connection', (ws, req) => {
       ATE_ACTOR_TEMPLATE: ACTOR_TEMPLATE,
       ATE_CONTEXT: kubeContext,
       ATE_ENDPOINT: ateEndpoint(),
-      AGY_MODEL,
+      AGY_MODEL: model,
       ...agentEnv,
     },
   });
-  console.log(`session ${session} opened`);
+  console.log(`session ${session} opened (agy model: ${model})`);
   if (AGY_MCP_URL) {
     openSessions.set(session, (openSessions.get(session) || 0) + 1);
     ensureEnv(session);
@@ -492,5 +511,6 @@ server.listen(PORT, HOST, async () => {
   console.log(`ate demo → http://${HOST}:${PORT}  (shell: ${SHELL} in ${SHELL_CWD}, cluster: ${kubeContext || 'default'}, atespace: ${ATESPACE || 'all'}, agy model: ${AGY_MODEL})`);
   console.log(`agy sessions manage actors in ${ACTOR_ATESPACE} from template ${ACTOR_TEMPLATE || '(unset; set AGY_ACTOR_TEMPLATE)'}`);
   tunnels.forEach(t => t.start());
+  loadModels();
   poll();
 });
