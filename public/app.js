@@ -58,7 +58,7 @@ const newTabBtn = document.getElementById('term-new');
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const sessions = [];
 let active = null;
-const DEFAULT_FONT_SIZE = 13.5;
+const DEFAULT_FONT_SIZE = 15;
 let fontSize = Number(localStorage.getItem('termFontSize')) || DEFAULT_FONT_SIZE;
 let nextId = 1;
 
