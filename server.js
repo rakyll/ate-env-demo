@@ -468,8 +468,10 @@ ptyWss.on('connection', (ws, req) => {
     ensureEnv(session);
   }
 
-  // agy's banner tags itself "(Googler Dogfood)"; drop it from the demo.
-  term.onData(d => { if (ws.readyState === 1) ws.send(d.replace(/ \(Googler Dogfood\)/g, '')); });
+  // agy's banner tags itself "(Googler Dogfood)"; blank it out for the demo.
+  // Same-width spaces, not deletion: agy places the next logo row by moving
+  // the cursor back a fixed number of columns from the end of this line.
+  term.onData(d => { if (ws.readyState === 1) ws.send(d.replace(/ \(Googler Dogfood\)/g, m => ' '.repeat(m.length))); });
   term.onExit(({ exitCode }) => {
     if (ws.readyState === 1) ws.send(`\r\n\x1b[2m[process exited with code ${exitCode}]\x1b[0m\r\n`);
     ws.close();
