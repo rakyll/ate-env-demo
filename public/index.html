@@ -98,7 +98,7 @@
             <span class="as-accent" data-viz-calls>0</span> in flight · agy → env MCP → actor
           </span>
         </div>
-        <ol class="as-viz__calls mono" id="viz-calls" aria-label="agy tool calls running in actors"></ol>
+        <ol class="as-viz__calls mono" id="viz-calls" aria-label="agy tool calls running in actors" title="Click to expand"></ol>
       </div>
 
       <div class="as-viz__group as-viz__group--events">
@@ -131,6 +131,17 @@
       <div class="as-trace__timeline mono" data-trace-timeline aria-label="Create, suspend and resume calls"></div>
       <div class="as-trace__detail mono" data-trace-detail></div>
     </div>
+  </dialog>
+
+  <dialog class="as-trace as-calls" id="calls" aria-label="Tool calls">
+    <header class="as-trace__head">
+      <div class="as-trace__heading">
+        <div class="as-trace__title mono">Tool calls · agy → env MCP → actor</div>
+        <div class="as-trace__sub mono" data-calls-sub></div>
+      </div>
+      <button type="button" class="as-chip mono" data-calls-close title="Close (Esc)">close</button>
+    </header>
+    <ol class="as-calls__list mono" data-calls-list></ol>
   </dialog>
 
   <script src="/vendor/xterm.js"></script>

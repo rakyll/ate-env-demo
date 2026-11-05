@@ -9,6 +9,7 @@ const LINGER_MS = 900;      // keep a vacated pod visibly "suspending" this long
 const RESUME_FLASH_MS = 950; // show resume animation when a poll skips RESUMING
 const MAX_EVENTS = 80;
 const MAX_CALLS = 5; // rows in the tool calls panel; finished calls stay until pushed out
+const MAX_CALL_HISTORY = 100; // calls kept for the expanded view
 const DONE_HOLD_MS = 2000; // a finished call stays bright this long before fading
 
 function hash(s) {
@@ -26,6 +27,12 @@ const el = (tag, cls, text) => {
 const clock = d => d.toLocaleTimeString([], { hour12: false });
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const setText = (n, text) => { if (n.textContent !== text) n.textContent = text; };
+// Puts rows into a list, touching the DOM only if they changed, so rows that
+// stay don't restart their animations.
+const showRows = (list, rows) => {
+  const shown = list.children;
+  if (shown.length !== rows.length || rows.some((r, i) => shown[i] !== r)) list.replaceChildren(...rows);
+};
 
 function since(ms) {
   if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
@@ -57,6 +64,8 @@ export class Viz {
     this.sessions = new Map(); // actor name -> tab label, for actors owned by open agy tabs
     this.onActorClick = null;  // set by the page; called with the clicked dot's or pod's actor
     this.onActorColors = null; // set by the page; called with actor name -> color after each update
+    this.onCallsClick = null;  // set by the page; called when the tool calls panel is clicked
+    this.bigCalls = null;      // { list, sub } of the expanded tool calls view while it's open
 
     this.tip = el('div', 'as-tip');
     this.tip.hidden = true;
@@ -362,27 +371,51 @@ export class Viz {
   renderCalls() {
     const now = Date.now();
     const calls = [...this.calls.values()].sort((x, y) => (!!x.endedAt - !!y.endedAt) || y.startedAt - x.startedAt);
-    for (const c of calls.slice(MAX_CALLS)) if (c.endedAt) this.calls.delete(`${c.actor.uid}:${c.id}`);
-    setText(this.$('[data-viz-calls]'), String(calls.filter(c => !c.endedAt).length));
+    for (const c of calls.slice(MAX_CALL_HISTORY)) if (c.endedAt) this.calls.delete(`${c.actor.uid}:${c.id}`);
+    const inFlight = calls.filter(c => !c.endedAt).length;
+    setText(this.$('[data-viz-calls]'), String(inFlight));
+    if (this.bigCalls) this.renderBigCalls(calls.slice(0, MAX_CALL_HISTORY), inFlight, now);
     const rows = calls.length ? calls.slice(0, MAX_CALLS).map(c => this.callRow(c, now))
       : [this.idleCallsEl ||= el('li', 'is-empty')];
     if (!calls.length) setText(rows[0], this.loaded ? 'idle · tool calls from agy tabs show up here while they run' : '…');
-    const shown = this.callsEl.children;
-    if (shown.length !== rows.length || rows.some((r, i) => shown[i] !== r)) this.callsEl.replaceChildren(...rows);
+    showRows(this.callsEl, rows);
   }
 
-  callRow(c, now) {
-    if (!c.row) {
+  // The expanded view (opened from the panel) lists every kept call with its
+  // full command and start time.
+  showCalls(list, sub) {
+    this.bigCalls = { list, sub };
+    this.renderCalls();
+  }
+
+  hideCalls() { this.bigCalls = null; }
+
+  renderBigCalls(calls, inFlight, now) {
+    const { list, sub } = this.bigCalls;
+    setText(sub, `${inFlight} in flight · ${calls.length - inFlight} recent · newest first`);
+    if (!calls.length) {
+      showRows(list, [this.idleBigCallsEl ||= el('li', 'is-empty', 'no tool calls yet · they show up here while agy runs them')]);
+      return;
+    }
+    showRows(list, calls.map(c => this.callRow(c, now, true)));
+  }
+
+  callRow(c, now, big = false) {
+    const key = big ? 'bigRow' : 'row';
+    if (!c[key]) {
       const li = el('li', 'is-new');
       li.dataset.actorColor = c.actor.color;
       li.dataset.uid = c.actor.uid;
       li.addEventListener('animationend', () => li.classList.remove('is-new'), { once: true });
       const arg = el('span', 'as-viz__call-arg', c.arg || '—');
       arg.title = c.arg;
-      c.row = { li, dot: el('span'), actor: el('span', 'as-viz__call-actor'), time: el('span', 'as-viz__call-time') };
-      li.append(c.row.dot, el('span', 'as-viz__call-name', c.name), arg, c.row.actor, c.row.time);
+      const row = c[key] = { li, dot: el('span'), actor: el('span', 'as-viz__call-actor'), time: el('span', 'as-viz__call-time') };
+      li.append(row.dot);
+      if (big) li.append(el('span', 'as-calls__time', clock(new Date(c.startedAt))));
+      li.append(el('span', 'as-viz__call-name', c.name), arg, row.actor, row.time);
+      row.actor.title = `${c.actor.atespace}/${c.actor.name}`;
     }
-    const { li, dot, actor, time } = c.row;
+    const { li, dot, actor, time } = c[key];
     li.classList.toggle('is-done', !!c.endedAt && now - c.endedAt > DONE_HOLD_MS);
     const dotCls = `as-viz__call-dot${c.endedAt ? ' is-ended' : ' pulse'}`;
     if (dot.className !== dotCls) dot.className = dotCls;
@@ -450,6 +483,7 @@ export class Viz {
     };
     this.root.addEventListener('mouseover', over);
     this.root.addEventListener('click', e => {
+      if (e.target.closest('#viz-calls') && this.onCallsClick) return this.onCallsClick();
       const t = e.target.closest('.as-viz__dot[data-uid], .as-viz__pod[data-uid]');
       const a = t && this.actors.get(t.dataset.uid);
       if (a && this.onActorClick) {

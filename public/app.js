@@ -52,6 +52,16 @@ viz.onActorColors = colors => {
 const traceDialog = document.getElementById('trace');
 const traceView = new TraceView(traceDialog);
 
+// Expanded tool calls view, opened by clicking the tool calls panel.
+const callsDialog = document.getElementById('calls');
+callsDialog.querySelector('[data-calls-close]').onclick = () => callsDialog.close();
+callsDialog.addEventListener('click', e => { if (e.target === callsDialog) callsDialog.close(); });
+callsDialog.addEventListener('close', () => { viz.hideCalls(); active?.term.focus(); });
+viz.onCallsClick = () => {
+  viz.showCalls(callsDialog.querySelector('[data-calls-list]'), callsDialog.querySelector('[data-calls-sub]'));
+  callsDialog.showModal();
+};
+
 // Each tab is its own xterm + WebSocket, and so its own PTY on the server.
 // A tab is an agy session identified by a UUID; the server exports it and the
 // actor of the same name into the shell's environment, and starts agy in it.

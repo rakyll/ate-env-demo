@@ -353,6 +353,20 @@ body {
 .as-viz__call-arg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .as-viz__call-actor { flex-shrink: 0; color: var(--actor-color, var(--muted)); }
 .as-viz__call-time { flex-shrink: 0; min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.as-viz__calls { cursor: pointer; transition: border-color .15s ease; }
+.as-viz__calls:hover { border-color: var(--border-hi); }
+.as-calls__list { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 6px 0; list-style: none; font-size: 14px; color: var(--muted); }
+.as-calls__list li {
+  display: grid; grid-template-columns: 10px 80px 120px minmax(0, 1fr) max-content 80px; align-items: baseline; gap: 16px;
+  padding: 9px 22px; border-bottom: 1px solid var(--border-soft); transition: opacity .6s ease;
+}
+.as-calls__list li.is-new { animation: eventIn .3s ease-out; }
+.as-calls__list li.is-done { opacity: .7; }
+.as-calls__list li.is-empty { display: block; border: 0; color: var(--dim); }
+.as-calls__list .as-viz__call-dot { width: 9px; height: 9px; align-self: start; margin-top: 7px; }
+.as-calls__time { color: var(--dim); font-variant-numeric: tabular-nums; }
+.as-calls__list .as-viz__call-arg { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-hi); }
+.as-calls__list .as-viz__call-time { min-width: 0; }
 .as-viz__group--events { flex: 1; min-height: 60px; }
 .as-viz__events {
   flex: 1; min-height: 0; overflow-y: auto;
