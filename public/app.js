@@ -1,5 +1,4 @@
 import { Viz, createSimulator } from './viz.js';
-import { TraceView } from './trace.js';
 
 const wsURL = p => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${p}`;
 const params = new URLSearchParams(location.search);
@@ -49,8 +48,6 @@ viz.onActorColors = colors => {
   actorColors = colors;
   for (const s of sessions) s.setColor(colors.get(s.sessionId));
 };
-const traceDialog = document.getElementById('trace');
-const traceView = new TraceView(traceDialog);
 
 // Expanded tool calls view, opened by clicking the tool calls panel.
 const callsDialog = document.getElementById('calls');
@@ -356,9 +353,6 @@ routerBtn.onclick = () => {
   clusterWs.send(JSON.stringify({ type: 'restart-router' }));
 };
 
-// Simulated actors have no traces, so only live actors open the trace view.
-viz.onActorClick = a => { if (!sim) traceView.open(a); };
-traceDialog.addEventListener('close', () => active?.term.focus());
 
 if (params.has('demo')) {
   startSim('simulated · ?demo');

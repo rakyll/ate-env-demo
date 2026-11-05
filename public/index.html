@@ -119,25 +119,11 @@
     </section>
   </main>
 
-  <dialog class="as-trace" id="trace" aria-label="Actor traces">
-    <header class="as-trace__head">
-      <div class="as-trace__heading">
-        <div class="as-trace__title mono" data-trace-title></div>
-        <div class="as-trace__sub mono" data-trace-sub></div>
-      </div>
-      <button type="button" class="as-chip mono" data-trace-close title="Close (Esc)">close</button>
-    </header>
-    <div class="as-trace__main">
-      <div class="as-trace__timeline mono" data-trace-timeline aria-label="Create, suspend and resume calls"></div>
-      <div class="as-trace__detail mono" data-trace-detail></div>
-    </div>
-  </dialog>
-
-  <dialog class="as-trace as-calls" id="calls" aria-label="Tool calls">
-    <header class="as-trace__head">
-      <div class="as-trace__heading">
-        <div class="as-trace__title mono">Tool calls · agent → env MCP → actor</div>
-        <div class="as-trace__sub mono" data-calls-sub></div>
+  <dialog class="as-dialog as-calls" id="calls" aria-label="Tool calls">
+    <header class="as-dialog__head">
+      <div class="as-dialog__heading">
+        <div class="as-dialog__title mono">Tool calls · agent → env MCP → actor</div>
+        <div class="as-dialog__sub mono" data-calls-sub></div>
       </div>
       <button type="button" class="as-chip mono" data-calls-close title="Close (Esc)">close</button>
     </header>
