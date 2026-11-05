@@ -377,7 +377,7 @@ export class Viz {
     if (this.bigCalls) this.renderBigCalls(calls.slice(0, MAX_CALL_HISTORY), inFlight, now);
     const rows = calls.length ? calls.slice(0, MAX_CALLS).map(c => this.callRow(c, now))
       : [this.idleCallsEl ||= el('li', 'is-empty')];
-    if (!calls.length) setText(rows[0], this.loaded ? 'idle · tool calls from agy tabs show up here while they run' : '…');
+    if (!calls.length) setText(rows[0], this.loaded ? 'idle · tool calls will show up here' : '…');
     showRows(this.callsEl, rows);
   }
 
@@ -394,7 +394,7 @@ export class Viz {
     const { list, sub } = this.bigCalls;
     setText(sub, `${inFlight} in flight · ${calls.length - inFlight} recent · newest first`);
     if (!calls.length) {
-      showRows(list, [this.idleBigCallsEl ||= el('li', 'is-empty', 'no tool calls yet · they show up here while agy runs them')]);
+      showRows(list, [this.idleBigCallsEl ||= el('li', 'is-empty', 'idle · tool calls will show up here')]);
       return;
     }
     showRows(list, calls.map(c => this.callRow(c, now, true)));
