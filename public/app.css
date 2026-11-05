@@ -318,6 +318,7 @@ body {
 .as-viz__pod--running .as-viz__pod-name { color: var(--actor-color, #61D76B); }
 .as-viz__pod--resuming { background: var(--actor-bg, #0f1a20); border-color: var(--actor-border, #2b5468); }
 .as-viz__pod--resuming .as-viz__pod-name, .as-viz__pod--resuming .as-viz__pod-sub { color: var(--actor-color, #64b9de); }
+.as-viz__pod-sub--tool { color: var(--actor-color, var(--text)); }
 .as-viz__pod--suspending { background: var(--pod-suspending); border-color: var(--actor-border, #243028); border-style: dashed; }
 .as-viz__pod--suspending .as-viz__pod-name { color: var(--actor-color, #F3F17B); opacity: .85; }
 .as-viz__pod.is-paired-hover { border-color: var(--actor-color, #61D76B); box-shadow: 0 0 14px -4px var(--actor-glow, rgba(97,215,107,.45)); }
@@ -337,6 +338,21 @@ body {
 .as-viz__pod-bar--suspending { opacity: .85; animation: podSuspendDrain 750ms cubic-bezier(.4,0,.6,1) forwards; }
 .as-viz__pods-more { grid-column: 1 / -1; font-size: 11px; color: var(--muted); text-align: right; }
 
+.as-viz__calls {
+  margin: 0; padding: 6px 12px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border-soft); border-radius: 8px;
+  font-size: 12px; line-height: 1.9; color: var(--muted);
+}
+.as-viz__calls li { display: flex; align-items: center; gap: 10px; white-space: nowrap; transition: opacity .6s ease; }
+.as-viz__calls li.is-new { animation: eventIn .3s ease-out; }
+.as-viz__calls li.is-done { opacity: .7; }
+.as-viz__calls li.is-empty { color: var(--dim); }
+.as-viz__call-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--actor-color, var(--accent)); }
+.as-viz__call-dot.is-ended { background: transparent; border: 1px solid var(--actor-color, var(--dim)); }
+.as-viz__call-name { flex-shrink: 0; min-width: 72px; font-weight: 600; color: var(--actor-color, var(--text)); }
+.as-viz__call-arg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.as-viz__call-actor { flex-shrink: 0; color: var(--actor-color, var(--muted)); }
+.as-viz__call-time { flex-shrink: 0; min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .as-viz__group--events { flex: 1; min-height: 60px; }
 .as-viz__events {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -350,6 +366,7 @@ body {
 .as-viz__events b { font-weight: 500; color: var(--actor-color, var(--text)); }
 .as-viz__events .is-empty { color: var(--dim); }
 .ev-running { color: var(--green); }
+.ev-tool { color: var(--text); }
 .ev-resuming { color: var(--blue); }
 .ev-suspending, .ev-deleted { color: var(--yellow); }
 .ev-suspended { color: var(--muted); }

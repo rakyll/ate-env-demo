@@ -92,9 +92,16 @@ let cluster = { ok: false, error: 'not polled yet', updatedAt: null, actors: [],
 
 // Actor states the MCP proxy sees before a poll can: a tool call wakes the
 // session's actor and suspendEnv puts it back, often within one poll.
+// The proxy also reports each session's in-flight tool calls so the page can
+// show what the actor is doing.
 const activity = new Map(); // session -> 'running' | 'suspending'
-const withActivity = c => (activity.size
-  ? { ...c, actors: c.actors.map(a => (activity.has(a.name) ? { ...a, state: activity.get(a.name) } : a)) }
+const toolsInFlight = new Map(); // session -> [{ id, name, arg, startedAt }]
+const withActivity = c => (activity.size || toolsInFlight.size
+  ? { ...c, actors: c.actors.map(a => {
+    const state = activity.get(a.name);
+    const tools = toolsInFlight.get(a.name);
+    return state || tools ? { ...a, ...(state && { state }), ...(tools && { tools }) } : a;
+  }) }
   : c);
 const broadcastCluster = () => broadcast({ type: 'cluster', cluster: withActivity(cluster) });
 
@@ -500,13 +507,19 @@ const ensureEnvs = () => openSessions.forEach((_, session) => ensureEnv(session)
 
 // Forwards a session's MCP request to AGY_MCP_URL and suspends the session's
 // actor once no tool calls are in flight, so it only runs while serving one.
-const toolCallsInFlight = new Map(); // session -> count
+let toolSeq = 0;
 
-function isToolCall(body) {
+// The tools/call requests in an MCP body, each summarized by its main
+// argument: the env server's shell takes a command, its file tools a path.
+function toolCalls(body) {
   try {
     const msg = JSON.parse(body);
-    return (Array.isArray(msg) ? msg : [msg]).some(m => m?.method === 'tools/call');
-  } catch { return false; }
+    return (Array.isArray(msg) ? msg : [msg]).filter(m => m?.method === 'tools/call').map(m => {
+      const args = m.params?.arguments || {};
+      const arg = String(args.command ?? args.path ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+      return { id: ++toolSeq, name: String(m.params?.name || 'tool'), arg, startedAt: Date.now() };
+    });
+  } catch { return []; }
 }
 
 function suspendEnv(session) {
@@ -523,17 +536,21 @@ function proxyMCP(req, res, session) {
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
-    let toolCall = req.method === 'POST' && isToolCall(body.toString());
-    if (toolCall) {
-      toolCallsInFlight.set(session, (toolCallsInFlight.get(session) || 0) + 1);
+    const calls = req.method === 'POST' ? toolCalls(body.toString()) : [];
+    if (calls.length) {
+      toolsInFlight.set(session, [...(toolsInFlight.get(session) || []), ...calls]);
       setActivity(session, 'running');
     }
+    let finished = !calls.length;
     const done = () => {
-      if (!toolCall) return;
-      toolCall = false;
-      const n = toolCallsInFlight.get(session) - 1;
-      if (n > 0) return toolCallsInFlight.set(session, n);
-      toolCallsInFlight.delete(session);
+      if (finished) return;
+      finished = true;
+      const left = (toolsInFlight.get(session) || []).filter(c => !calls.includes(c));
+      if (left.length) {
+        toolsInFlight.set(session, left);
+        return broadcastCluster();
+      }
+      toolsInFlight.delete(session);
       suspendEnv(session);
     };
     const { host, ...headers } = req.headers;

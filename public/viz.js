@@ -8,6 +8,8 @@ const POD_SLOTS = 8;
 const LINGER_MS = 900;      // keep a vacated pod visibly "suspending" this long
 const RESUME_FLASH_MS = 950; // show resume animation when a poll skips RESUMING
 const MAX_EVENTS = 80;
+const MAX_CALLS = 5; // rows in the tool calls panel; finished calls stay until pushed out
+const DONE_HOLD_MS = 2000; // a finished call stays bright this long before fading
 
 function hash(s) {
   let h = 2166136261;
@@ -22,6 +24,8 @@ const el = (tag, cls, text) => {
   return n;
 };
 const clock = d => d.toLocaleTimeString([], { hour12: false });
+const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const setText = (n, text) => { if (n.textContent !== text) n.textContent = text; };
 
 function since(ms) {
   if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
@@ -39,11 +43,13 @@ export class Viz {
     this.dotsEl = this.$('#viz-dots');
     this.podsEl = this.$('#viz-pods');
     this.eventsEl = this.$('#viz-events');
+    this.callsEl = this.$('#viz-calls');
     this.routerEl = this.$('.as-viz__router');
 
     this.actors = new Map();   // uid -> actor (latest)
     this.since = new Map();    // uid -> ms timestamp the current state was first seen
     this.flash = new Map();    // uid -> { until, kind } client-side transitional visuals
+    this.calls = new Map();    // actor uid:call id -> { name, arg, startedAt, endedAt, actor }
     this.slots = new Array(POD_SLOTS).fill(null); // uid or null
     this.dotEls = new Map();
     this.loaded = false;
@@ -57,7 +63,7 @@ export class Viz {
     this.bindHover();
     this.addEvent('ev-suspended', null, 'waiting for cluster state…', true);
 
-    setInterval(() => this.renderPods(), 250);
+    setInterval(() => { this.renderPods(); this.renderCalls(); }, 250);
   }
 
   // Actors whose name is an open tab's session ID are highlighted as owned by it.
@@ -74,6 +80,7 @@ export class Viz {
     this.actors.clear();
     this.since.clear();
     this.flash.clear();
+    this.calls.clear();
     this.dotEls.clear();
     this.slots.fill(null);
     this.loaded = false;
@@ -93,6 +100,10 @@ export class Viz {
     }
 
     for (const [uid, a] of next) {
+      for (const t of a.tools || []) {
+        const key = `${uid}:${t.id}`;
+        if (!this.calls.has(key)) this.calls.set(key, { ...t, endedAt: null, actor: a });
+      }
       const prev = this.actors.get(uid);
       if (!prev) {
         this.since.set(uid, now);
@@ -103,9 +114,13 @@ export class Viz {
         }
         continue;
       }
+      this.endTools(prev, a, now);
       if (prev.state === a.state) continue;
       this.since.set(uid, now);
       this.onTransition(prev, a, now);
+    }
+    for (const c of this.calls.values()) {
+      if (!c.endedAt && !next.get(c.actor.uid)?.tools?.some(t => t.id === c.id)) c.endedAt = now;
     }
     for (const [uid, prev] of this.actors) {
       if (next.has(uid)) continue;
@@ -121,6 +136,16 @@ export class Viz {
     this.renderHeader(atespace, mode, detail);
     this.renderDots();
     this.renderPods();
+    this.renderCalls();
+  }
+
+  // Tool calls (MCP tools/call through the server's proxy) that were in flight
+  // on the previous snapshot and no longer are have finished.
+  endTools(prev, a, now) {
+    const still = new Set((a.tools || []).map(t => t.id));
+    for (const t of prev.tools || []) {
+      if (!still.has(t.id)) this.addEvent('ev-tool', a, t.name, false, `${t.arg ? clip(t.arg, 60) + ' · ' : ''}${since(now - t.startedAt)}`);
+    }
   }
 
   onTransition(prev, a, now) {
@@ -301,10 +326,14 @@ export class Viz {
         const name = el('span', 'as-viz__pod-name mono', `actor/${a.name}`);
         name.title = `${a.atespace}/${a.name}`;
         const elapsed = now - (this.since.get(a.uid) || now);
-        const sub = state === 'resuming' ? `↻ resuming · ${since(fl?.kind === 'resuming' ? RESUME_FLASH_MS - (fl.until - now) : elapsed)}`
+        const tool = state !== 'suspending' && a.tools?.at(-1);
+        const sub = state === 'resuming' ? `↻ resuming${tool ? ` for ${tool.name}` : ''} · ${since(fl?.kind === 'resuming' ? RESUME_FLASH_MS - (fl.until - now) : elapsed)}`
           : state === 'suspending' ? '⏸ suspending state'
+          : tool ? `⚙ ${tool.name} · ${since(now - tool.startedAt)}${tool.arg ? ` · ${clip(tool.arg, 40)}` : ''}`
           : `running · ${since(elapsed)}`;
-        pod.append(name, el('span', 'as-viz__pod-sub mono', sub), track);
+        const subEl = el('span', `as-viz__pod-sub mono${tool ? ' as-viz__pod-sub--tool' : ''}`, sub);
+        if (tool) subEl.title = `${tool.name}${tool.arg ? `: ${tool.arg}` : ''}`;
+        pod.append(name, subEl, track);
         if (state === 'running') {
           const base = 60 + (hash(a.uid) % 26);
           bar.style.width = `${base + Math.round(Math.sin(now / 1400 + i) * 6)}%`;
@@ -322,6 +351,45 @@ export class Viz {
     this.podsEl.replaceChildren(frag);
     if (this.hoverUid) this.pair(this.hoverUid, true);
   }
+
+  // ---------------------------------------------------------------------
+  // tool calls: in flight first, then the most recent finished ones
+
+  // Rows are kept per call and updated in place every tick, so only new rows
+  // animate and the idle line stays put.
+  renderCalls() {
+    const now = Date.now();
+    const calls = [...this.calls.values()].sort((x, y) => (!!x.endedAt - !!y.endedAt) || y.startedAt - x.startedAt);
+    for (const c of calls.slice(MAX_CALLS)) if (c.endedAt) this.calls.delete(`${c.actor.uid}:${c.id}`);
+    setText(this.$('[data-viz-calls]'), String(calls.filter(c => !c.endedAt).length));
+    const rows = calls.length ? calls.slice(0, MAX_CALLS).map(c => this.callRow(c, now))
+      : [this.idleCallsEl ||= el('li', 'is-empty')];
+    if (!calls.length) setText(rows[0], this.loaded ? 'idle · tool calls from agy tabs show up here while they run' : '…');
+    const shown = this.callsEl.children;
+    if (shown.length !== rows.length || rows.some((r, i) => shown[i] !== r)) this.callsEl.replaceChildren(...rows);
+  }
+
+  callRow(c, now) {
+    if (!c.row) {
+      const li = el('li', 'is-new');
+      li.dataset.actorColor = c.actor.color;
+      li.dataset.uid = c.actor.uid;
+      li.addEventListener('animationend', () => li.classList.remove('is-new'), { once: true });
+      const arg = el('span', 'as-viz__call-arg', c.arg || '—');
+      arg.title = c.arg;
+      c.row = { li, dot: el('span'), actor: el('span', 'as-viz__call-actor'), time: el('span', 'as-viz__call-time') };
+      li.append(c.row.dot, el('span', 'as-viz__call-name', c.name), arg, c.row.actor, c.row.time);
+    }
+    const { li, dot, actor, time } = c.row;
+    li.classList.toggle('is-done', !!c.endedAt && now - c.endedAt > DONE_HOLD_MS);
+    const dotCls = `as-viz__call-dot${c.endedAt ? ' is-ended' : ' pulse'}`;
+    if (dot.className !== dotCls) dot.className = dotCls;
+    const owner = this.sessions.get(c.actor.name);
+    setText(actor, `${owner ? owner + ' · ' : ''}actor/${c.actor.name.slice(0, 8)}`);
+    setText(time, c.endedAt ? `✓ ${since(c.endedAt - c.startedAt)}` : since(now - c.startedAt));
+    return li;
+  }
+
 
   // ---------------------------------------------------------------------
   // router + events
@@ -416,8 +484,12 @@ export function createSimulator(onUpdate, { total = 250, targetActive = 7 } = {}
     workerPod: null,
   }));
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const calls = [['shell', 'npm test'], ['shell', 'ls -la'], ['shell', 'git status --short'], ['shell', 'python3 main.py --check'],
+    ['read_file', 'src/index.ts'], ['read_file', 'package.json'], ['write_file', 'README.md'], ['write_file', 'src/app.py']];
+  const toolCall = () => { const [name, arg] = pick(calls); return [{ id: ++toolSeq, name, arg, startedAt: Date.now() }]; };
+  let toolSeq = 0;
   let worker = 0;
-  const emit = () => onUpdate({ actors: actors.map(a => ({ ...a })), pools: [], atespace: 'ate-demo' });
+  const emit = () => onUpdate({ actors: actors.map(a => ({ ...a, tools: a.tools && [...a.tools] })), pools: [], atespace: 'ate-demo' });
 
   const later = (ms, fn) => setTimeout(() => { fn(); emit(); }, ms);
   const tick = () => {
@@ -427,11 +499,13 @@ export function createSimulator(onUpdate, { total = 250, targetActive = 7 } = {}
       const a = pick(idle);
       a.state = 'resuming';
       a.workerPod = `worker-${(worker++ % 50) + 1}`;
+      a.tools = toolCall();
       later(950, () => { a.state = 'running'; a.snapshots = Math.max(1, a.snapshots); });
     } else {
       const a = pick(actors.filter(x => x.state === 'running'));
       if (a) {
         a.state = 'suspending';
+        a.tools = [];
         later(750, () => { a.state = 'suspended'; a.workerPod = null; });
       }
     }
