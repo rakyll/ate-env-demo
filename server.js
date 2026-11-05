@@ -87,7 +87,10 @@ let cluster = { ok: false, error: 'not polled yet', updatedAt: null, actors: [],
 // session's actor and suspendEnv puts it back, often within one poll.
 // The proxy also reports each session's in-flight tool calls so the page can
 // show what the actor is doing.
-const activity = new Map(); // session -> 'running' | 'suspending'
+const activity = new Map(); // session -> 'running' | 'suspending' | 'suspended'
+// Polls already under way when a suspend finishes still report the actor
+// running, so 'suspended' holds until a poll that started later.
+const suspendedAt = new Map(); // session -> when its suspend finished
 const toolsInFlight = new Map(); // session -> [{ id, name, arg, startedAt }]
 const withActivity = c => (activity.size || toolsInFlight.size
   ? { ...c, actors: c.actors.map(a => {
@@ -222,6 +225,7 @@ async function pollPools() {
 
 async function poll() {
   const gen = contextGen;
+  const started = Date.now();
   let next;
   try {
     const [actors, pools] = await Promise.all([pollActors(), pollPools().catch(() => [])]);
@@ -231,6 +235,11 @@ async function poll() {
   }
   if (gen === contextGen) {
     cluster = next;
+    for (const [session, at] of suspendedAt) {
+      if (at >= started) continue;
+      suspendedAt.delete(session);
+      if (activity.get(session) === 'suspended') activity.delete(session);
+    }
     broadcastCluster();
   }
   setTimeout(poll, POLL_MS);
@@ -304,12 +313,16 @@ function switchContext(name) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
-  const mcp = url.pathname.match(/^\/mcp\/([^/]+)$/);
+  const mcp = url.pathname.match(/^\/mcp\/([^/]+)(\/turn-end)?$/);
   if (mcp && AGY_MCP_URL) {
     // Agents run on this machine; refuse cross-origin pages.
     const origin = req.headers.origin;
     if (!UUID_RE.test(mcp[1]) || (origin && new URL(origin).host !== req.headers.host)) { res.writeHead(403); return res.end(); }
-    return proxyMCP(req, res, mcp[1]);
+    if (!mcp[2]) return proxyMCP(req, res, mcp[1]);
+    if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+    suspendWhenIdle(mcp[1], 0);
+    res.writeHead(204);
+    return res.end();
   }
   if (url.pathname === '/api/cluster') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -367,16 +380,22 @@ function linkAllExcept(from, to, skip) {
 
 const readOr = (file, fallback) => { try { return fs.readFileSync(file, 'utf8'); } catch { return fallback; } };
 
-function makeAgyHome(home, url) {
+function makeAgyHome(home, url, turnEndUrl) {
   const gemini = path.join(REAL_HOME, '.gemini');
   const config = path.join(gemini, 'config');
   linkAllExcept(REAL_HOME, home, ['.gemini']);
   if (fs.existsSync(gemini)) linkAllExcept(gemini, path.join(home, '.gemini'), ['config', 'GEMINI.md']);
-  if (fs.existsSync(config)) linkAllExcept(config, path.join(home, '.gemini', 'config'), ['mcp_config.json']);
+  if (fs.existsSync(config)) linkAllExcept(config, path.join(home, '.gemini', 'config'), ['mcp_config.json', 'hooks.json']);
   else fs.mkdirSync(path.join(home, '.gemini', 'config'), { recursive: true });
   const mcp = JSON.parse(readOr(path.join(config, 'mcp_config.json'), '{"mcpServers":{}}'));
   mcp.mcpServers = { ...mcp.mcpServers, [AGY_MCP_NAME]: { serverUrl: url } };
   fs.writeFileSync(path.join(home, '.gemini', 'config', 'mcp_config.json'), JSON.stringify(mcp, null, 2));
+  // agy runs Stop hooks when a turn ends; this one tells the server, which
+  // then suspends the session's actor.
+  const hooks = JSON.parse(readOr(path.join(config, 'hooks.json'), '{}'));
+  hooks['ate-env-demo-turn-end'] = { Stop: [{ type: 'command', timeout: 5,
+    command: `cat >/dev/null; curl -s -m 3 -X POST ${turnEndUrl} >/dev/null 2>&1; echo '{"decision":"stop"}'` }] };
+  fs.writeFileSync(path.join(home, '.gemini', 'config', 'hooks.json'), JSON.stringify(hooks, null, 2));
   const rules = readOr(path.join(gemini, 'GEMINI.md'), '');
   fs.writeFileSync(path.join(home, '.gemini', 'GEMINI.md'), `${rules}${rules && !rules.endsWith('\n') ? '\n' : ''}${SESSION_RULES}`);
 }
@@ -387,7 +406,7 @@ function makeSessionDir(session) {
   const dir = fs.mkdtempSync(path.join(HOMES_DIR, `${session}-`));
   const url = `http://127.0.0.1:${PORT}/mcp/${session}`;
   const home = path.join(dir, 'home');
-  makeAgyHome(home, url);
+  makeAgyHome(home, url, `${url}/turn-end`);
   return { dir, env: { AGY_HOME: home, AGY_SETTINGS: JSON.stringify({ permissions: { allow: [`mcp(${AGY_MCP_NAME}/*)`] } }) } };
 }
 
@@ -410,9 +429,21 @@ function ensureEnv(session) {
 
 const ensureEnvs = () => openSessions.forEach((_, session) => ensureEnv(session));
 
-// Forwards a session's MCP request to AGY_MCP_URL and suspends the session's
-// actor once no tool calls are in flight, so it only runs while serving one.
+// Forwards a session's MCP request to AGY_MCP_URL. The session's actor stays up
+// between the tool calls of a turn and is suspended when agy's Stop hook
+// reports the turn over, or after IDLE_SUSPEND_MS without tool calls in case
+// the hook never comes.
+const IDLE_SUSPEND_MS = 60000;
+const idleTimers = new Map(); // session -> pending suspend
 let toolSeq = 0;
+
+function suspendWhenIdle(session, ms) {
+  clearTimeout(idleTimers.get(session));
+  idleTimers.set(session, setTimeout(() => {
+    idleTimers.delete(session);
+    if (!toolsInFlight.has(session) && activity.get(session) === 'running') suspendEnv(session);
+  }, ms));
+}
 
 // The tools/call requests in an MCP body, each summarized by its main
 // argument: the env server's shell takes a command, its file tools a path.
@@ -431,7 +462,10 @@ function suspendEnv(session) {
   setActivity(session, 'suspending');
   execFile(ATE_ENV, ['suspend', session, '--api', envTunnel.endpoint], { timeout: 120000 }, (err, stdout, stderr) => {
     // A new tool call may have woken it meanwhile.
-    if (activity.get(session) === 'suspending') setActivity(session, null);
+    if (activity.get(session) === 'suspending') {
+      if (!err) suspendedAt.set(session, Date.now());
+      setActivity(session, err ? null : 'suspended');
+    }
     if (err) console.error(`session ${session}: ate-env suspend failed: ${`${stdout}${stderr}`.trim() || err.message}`);
   });
 }
@@ -443,6 +477,7 @@ function proxyMCP(req, res, session) {
     const body = Buffer.concat(chunks);
     const calls = req.method === 'POST' ? toolCalls(body.toString()) : [];
     if (calls.length) {
+      clearTimeout(idleTimers.get(session));
       toolsInFlight.set(session, [...(toolsInFlight.get(session) || []), ...calls]);
       setActivity(session, 'running');
     }
@@ -456,7 +491,8 @@ function proxyMCP(req, res, session) {
         return broadcastCluster();
       }
       toolsInFlight.delete(session);
-      suspendEnv(session);
+      broadcastCluster();
+      suspendWhenIdle(session, IDLE_SUSPEND_MS);
     };
     const { host, ...headers } = req.headers;
     const up = http.request(AGY_MCP_URL.replaceAll('{session}', session), { method: req.method, headers }, upRes => {
