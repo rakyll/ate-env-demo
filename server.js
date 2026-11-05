@@ -41,6 +41,10 @@ const SHELL_CWD = process.env.DEMO_CWD || ROOT;
 // One expansion per word: zsh doesn't split ${X:+--flag "$X"}.
 const AGY_RUN = 'HOME="$AGY_HOME" agy --model "$AGY_MODEL" ${AGY_SETTINGS:+--settings} ${AGY_SETTINGS:+"$AGY_SETTINGS"}; exec "$SHELL" -l';
 const KUBECTL = process.env.KUBECTL || 'kubectl';
+// The page's router button rollout-restarts this deployment. The router's envoy
+// can stay drained after the router container restarts, leaving the service
+// without endpoints (connection refused) until the pod is replaced.
+const ROUTER_DEPLOY = process.env.ROUTER_DEPLOY || 'ate-system/deploy/atenet-router';
 // The kubeconfig context (cluster) every kubectl call targets; switchable from
 // the page. Starts on DEFAULT_CONTEXT if the kubeconfig has it, else on
 // `kubectl config current-context`.
@@ -102,9 +106,9 @@ function setActivity(session, state) {
 
 const ctxArgs = () => (kubeContext ? ['--context', kubeContext] : []);
 
-function run(args) {
+function run(args, timeout = 15000) {
   return new Promise((resolve, reject) => {
-    execFile(KUBECTL, [...args, ...ctxArgs()], { maxBuffer: 64 * 1024 * 1024, timeout: 15000 }, (err, stdout, stderr) => {
+    execFile(KUBECTL, [...args, ...ctxArgs()], { maxBuffer: 64 * 1024 * 1024, timeout }, (err, stdout, stderr) => {
       if (!err) return resolve(stdout);
       const msg = (stderr || '').trim().split('\n').filter(l => l && !l.startsWith('Warning:')).join(' ');
       reject(new Error(msg || (err.killed ? `kubectl ${args.slice(0, 3).join(' ')} timed out` : err.message)));
@@ -262,6 +266,27 @@ function loadModels() {
 const modelsMsg = () => ({ type: 'models', default: AGY_MODEL, models: agyModels });
 const pickModel = m => (agyModels.some(x => x.id === m) ? m : AGY_MODEL);
 
+let router = { state: 'idle', error: null, at: null }; // 'idle' | 'restarting' | 'ok' | 'error'
+const routerMsg = () => ({ type: 'router', ...router });
+
+async function restartRouter() {
+  if (router.state === 'restarting') return;
+  const [ns, ...rest] = ROUTER_DEPLOY.split('/');
+  const deploy = rest.join('/');
+  console.log(`restarting ${ROUTER_DEPLOY} on ${kubeContext || '(default)'}`);
+  router = { state: 'restarting', error: null, at: new Date().toISOString() };
+  broadcast(routerMsg());
+  try {
+    await run(['-n', ns, 'rollout', 'restart', deploy]);
+    await run(['-n', ns, 'rollout', 'status', deploy, '--timeout=120s'], 130000);
+    router = { state: 'ok', error: null, at: new Date().toISOString() };
+  } catch (e) {
+    console.error(`router restart failed: ${e.message}`);
+    router = { state: 'error', error: e.message, at: new Date().toISOString() };
+  }
+  broadcast(routerMsg());
+}
+
 function switchContext(name) {
   if (name === kubeContext || !kubeContexts.includes(name)) return;
   console.log(`switching cluster: ${kubeContext || '(default)'} → ${name}`);
@@ -403,9 +428,11 @@ clusterWss.on('connection', async ws => {
     try {
       const msg = JSON.parse(raw.toString());
       if (msg.type === 'context') switchContext(msg.name);
+      if (msg.type === 'restart-router') restartRouter();
     } catch { /* ignore malformed messages */ }
   });
   ws.send(JSON.stringify(modelsMsg()));
+  ws.send(JSON.stringify(routerMsg()));
   ws.send(JSON.stringify(await loadContexts()));
   ws.send(JSON.stringify({ type: 'cluster', cluster: withActivity(cluster) }));
 });

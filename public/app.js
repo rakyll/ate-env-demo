@@ -312,6 +312,26 @@ picker.onchange = () => {
   if (clusterWs?.readyState === 1) clusterWs.send(JSON.stringify({ type: 'context', name: picker.value }));
 };
 
+// Router button: rollout-restarts atenet-router in the selected cluster.
+const routerBtn = document.getElementById('router-restart');
+const clock = iso => new Date(iso).toLocaleTimeString([], { hour12: false });
+
+function renderRouter({ state, error, at }) {
+  routerBtn.disabled = state === 'restarting';
+  routerBtn.dataset.state = state;
+  routerBtn.textContent = state === 'restarting' ? '↻ restarting…' : '↻ router';
+  routerBtn.title = state === 'restarting' ? `Restarting atenet-router since ${clock(at)}`
+    : state === 'error' ? `Router restart failed at ${clock(at)}: ${error}`
+    : state === 'ok' ? `Router restarted at ${clock(at)}. Click to restart again.`
+    : 'Restart atenet-router if the demo gets stuck';
+}
+
+routerBtn.onclick = () => {
+  if (clusterWs?.readyState !== 1) return;
+  if (!confirm(`Restart atenet-router on ${currentContext}? Open actor connections will drop.`)) return;
+  clusterWs.send(JSON.stringify({ type: 'restart-router' }));
+};
+
 // Simulated actors have no traces, so only live actors open the trace view.
 viz.onActorClick = a => { if (!sim) traceView.open(a); };
 traceDialog.addEventListener('close', () => active?.term.focus());
@@ -325,8 +345,10 @@ if (params.has('demo')) {
     ws.onmessage = e => {
       const msg = JSON.parse(e.data);
       if (msg.type === 'models') return renderModels(msg);
+      if (msg.type === 'router') return renderRouter(msg);
       if (msg.type === 'contexts') {
         renderContexts(msg.current, msg.contexts);
+        routerBtn.hidden = !msg.current;
         // Sessions are bound to the old cluster's actors and endpoint; restart them.
         if (currentContext !== null && msg.current !== currentContext) {
           viz.reset();

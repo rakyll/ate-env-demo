@@ -216,6 +216,9 @@ body {
   transition: color .15s ease, background-color .15s ease, border-color .15s ease;
 }
 .as-chip:hover, .as-chip:focus-visible { color: var(--text); background: var(--surface-2); border-color: var(--border-hi); outline: none; }
+.as-chip:disabled { cursor: progress; opacity: .6; }
+.as-chip--nav { height: 32px; border-radius: 8px; }
+.as-chip[data-state=error] { color: var(--red); border-color: var(--red); }
 .as-term__body { flex: 1; min-height: 0; padding: 14px 6px 10px 16px; }
 .as-term__pane { height: 100%; }
 .as-term__pane[hidden] { display: none; }
