@@ -206,7 +206,7 @@ body {
   background: transparent; color: var(--muted); font-size: 16px; cursor: pointer;
 }
 .as-tabs__new:hover, .as-tabs__new:focus-visible { color: var(--accent); border-color: var(--border); background: var(--surface-2); outline: none; }
-.as-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.as-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--actor-color, var(--accent)); }
 .as-live-dot.is-dead { background: var(--red); animation: none; }
 .as-chip {
   height: 28px; padding: 0 10px;
@@ -252,15 +252,15 @@ body {
 .as-viz__meta-resuming { color: var(--blue); }
 .as-viz__meta-suspending { color: var(--yellow); }
 
-.as-viz [data-actor-color=green]  { --actor-color: #61D76B; --actor-glow: rgba(97,215,107,.55);  --actor-bg: rgba(97,215,107,.08);  --actor-dot-bg: rgba(97,215,107,.28);  --actor-border: rgba(97,215,107,.44); }
-.as-viz [data-actor-color=blue]   { --actor-color: #64b9de; --actor-glow: rgba(100,185,222,.55); --actor-bg: rgba(100,185,222,.08); --actor-dot-bg: rgba(100,185,222,.28); --actor-border: rgba(100,185,222,.44); }
-.as-viz [data-actor-color=yellow] { --actor-color: #F3F17B; --actor-glow: rgba(243,241,123,.55); --actor-bg: rgba(243,241,123,.08); --actor-dot-bg: rgba(243,241,123,.28); --actor-border: rgba(243,241,123,.44); }
-.as-viz [data-actor-color=red]    { --actor-color: #E77CB2; --actor-glow: rgba(231,124,178,.55); --actor-bg: rgba(231,124,178,.08); --actor-dot-bg: rgba(231,124,178,.28); --actor-border: rgba(231,124,178,.44); }
+[data-actor-color=green]  { --actor-color: #61D76B; --actor-glow: rgba(97,215,107,.55);  --actor-bg: rgba(97,215,107,.08);  --actor-dot-bg: rgba(97,215,107,.28);  --actor-border: rgba(97,215,107,.44); }
+[data-actor-color=blue]   { --actor-color: #64b9de; --actor-glow: rgba(100,185,222,.55); --actor-bg: rgba(100,185,222,.08); --actor-dot-bg: rgba(100,185,222,.28); --actor-border: rgba(100,185,222,.44); }
+[data-actor-color=yellow] { --actor-color: #F3F17B; --actor-glow: rgba(243,241,123,.55); --actor-bg: rgba(243,241,123,.08); --actor-dot-bg: rgba(243,241,123,.28); --actor-border: rgba(243,241,123,.44); }
+[data-actor-color=red]    { --actor-color: #E77CB2; --actor-glow: rgba(231,124,178,.55); --actor-bg: rgba(231,124,178,.08); --actor-dot-bg: rgba(231,124,178,.28); --actor-border: rgba(231,124,178,.44); }
 /* Darker actor colors that stay readable on a light background. */
-[data-theme=light] .as-viz [data-actor-color=green]  { --actor-color: #2e9e3d; --actor-glow: rgba(46,158,61,.35);  --actor-bg: rgba(46,158,61,.07);  --actor-dot-bg: rgba(46,158,61,.2);  --actor-border: rgba(46,158,61,.45); }
-[data-theme=light] .as-viz [data-actor-color=blue]   { --actor-color: #2a84b0; --actor-glow: rgba(42,132,176,.35); --actor-bg: rgba(42,132,176,.07); --actor-dot-bg: rgba(42,132,176,.2); --actor-border: rgba(42,132,176,.45); }
-[data-theme=light] .as-viz [data-actor-color=yellow] { --actor-color: #c88a00; --actor-glow: rgba(200,138,0,.35);   --actor-bg: rgba(200,138,0,.07);   --actor-dot-bg: rgba(200,138,0,.2);   --actor-border: rgba(200,138,0,.45); }
-[data-theme=light] .as-viz [data-actor-color=red]    { --actor-color: #c63d82; --actor-glow: rgba(198,61,130,.35); --actor-bg: rgba(198,61,130,.07); --actor-dot-bg: rgba(198,61,130,.2); --actor-border: rgba(198,61,130,.45); }
+[data-theme=light] [data-actor-color=green]  { --actor-color: #2e9e3d; --actor-glow: rgba(46,158,61,.35);  --actor-bg: rgba(46,158,61,.07);  --actor-dot-bg: rgba(46,158,61,.2);  --actor-border: rgba(46,158,61,.45); }
+[data-theme=light] [data-actor-color=blue]   { --actor-color: #2a84b0; --actor-glow: rgba(42,132,176,.35); --actor-bg: rgba(42,132,176,.07); --actor-dot-bg: rgba(42,132,176,.2); --actor-border: rgba(42,132,176,.45); }
+[data-theme=light] [data-actor-color=yellow] { --actor-color: #c88a00; --actor-glow: rgba(200,138,0,.35);   --actor-bg: rgba(200,138,0,.07);   --actor-dot-bg: rgba(200,138,0,.2);   --actor-border: rgba(200,138,0,.45); }
+[data-theme=light] [data-actor-color=red]    { --actor-color: #c63d82; --actor-glow: rgba(198,61,130,.35); --actor-bg: rgba(198,61,130,.07); --actor-dot-bg: rgba(198,61,130,.2); --actor-border: rgba(198,61,130,.45); }
 
 .as-viz__dots {
   display: grid;

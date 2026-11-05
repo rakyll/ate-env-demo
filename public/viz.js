@@ -56,6 +56,7 @@ export class Viz {
     this.pools = [];
     this.sessions = new Map(); // actor name -> tab label, for actors owned by open agy tabs
     this.onActorClick = null;  // set by the page; called with the clicked dot's or pod's actor
+    this.onActorColors = null; // set by the page; called with actor name -> color after each update
 
     this.tip = el('div', 'as-tip');
     this.tip.hidden = true;
@@ -137,6 +138,7 @@ export class Viz {
     this.renderDots();
     this.renderPods();
     this.renderCalls();
+    this.onActorColors?.(new Map([...next.values()].map(a => [a.name, a.color])));
   }
 
   // Tool calls (MCP tools/call through the server's proxy) that were in flight

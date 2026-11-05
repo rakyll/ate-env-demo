@@ -45,6 +45,10 @@ const theme = () => document.documentElement.dataset.theme || 'dark';
 await document.fonts.load('13px "Geist Mono"').catch(() => {});
 
 const viz = new Viz(document.getElementById('viz'));
+viz.onActorColors = colors => {
+  actorColors = colors;
+  for (const s of sessions) s.setColor(colors.get(s.sessionId));
+};
 const traceDialog = document.getElementById('trace');
 const traceView = new TraceView(traceDialog);
 
@@ -125,6 +129,12 @@ class Session {
   }
 
   send(d) { if (this.sock?.readyState === 1) this.sock.send(d); }
+  // The tab's dot takes its actor's color in the cluster view.
+  setColor(color) {
+    if (color) this.tab.dataset.actorColor = color;
+    else delete this.tab.dataset.actorColor;
+  }
+
   setDead(dead) { this.tab.querySelector('.as-live-dot').classList.toggle('is-dead', dead); }
 
   dispose() {
@@ -166,7 +176,11 @@ function loadTabs() {
   } catch { return { tabs: [] }; }
 }
 
-const syncSessions = () => viz.setSessions(new Map(sessions.map(s => [s.sessionId, s.label])));
+let actorColors = new Map(); // actor name -> color, from the latest cluster view
+const syncSessions = () => {
+  viz.setSessions(new Map(sessions.map(s => [s.sessionId, s.label])));
+  for (const s of sessions) s.setColor(actorColors.get(s.sessionId));
+};
 
 function openSession(saved) {
   const s = new Session(saved);
