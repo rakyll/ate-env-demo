@@ -407,6 +407,8 @@ body {
 }
 .as-tip span { color: var(--muted); }
 
+.as-viz__dot[data-uid] { cursor: pointer; }
+
 /* ---------- dialog (expanded tool calls) ---------- */
 .as-dialog {
   width: min(1240px, 94vw); height: min(780px, 86vh); max-width: none; max-height: none;

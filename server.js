@@ -295,6 +295,30 @@ async function restartRouter() {
   broadcast(routerMsg());
 }
 
+// Deletes an actor the page clicked. Session actors are envs, so ate-env
+// deletes them; other actors go through kubectl ate. An open tab whose actor
+// was deleted gets a new one.
+async function deleteActor(name, atespace) {
+  if (!cluster.actors.some(a => a.name === name && a.atespace === atespace)) return;
+  console.log(`deleting actor ${atespace}/${name}`);
+  const asEnv = () => new Promise((resolve, reject) =>
+    execFile(ATE_ENV, ['delete', name, '--api', envTunnel.endpoint], { timeout: 120000 }, (err, stdout, stderr) =>
+      (err ? reject(new Error(`${stdout}${stderr}`.trim() || err.message)) : resolve())));
+  const endpoint = ateEndpoint() ? ['--endpoint', ateEndpoint()] : [];
+  try {
+    try {
+      if (!envTunnel.ready) throw new Error('no env API');
+      await asEnv();
+    } catch {
+      await run(['ate', 'delete', 'actor', name, '-a', atespace, ...endpoint], 60000);
+    }
+  } catch (e) {
+    return console.error(`delete ${atespace}/${name} failed: ${e.message}`);
+  }
+  envReady.delete(name);
+  if (openSessions.has(name)) ensureEnv(name);
+}
+
 function switchContext(name) {
   if (name === kubeContext || !kubeContexts.includes(name)) return;
   console.log(`switching cluster: ${kubeContext || '(default)'} → ${name}`);
@@ -354,6 +378,7 @@ clusterWss.on('connection', async ws => {
       const msg = JSON.parse(raw.toString());
       if (msg.type === 'context') switchContext(msg.name);
       if (msg.type === 'restart-router') restartRouter();
+      if (msg.type === 'delete-actor') deleteActor(String(msg.name), String(msg.atespace));
     } catch { /* ignore malformed messages */ }
   });
   ws.send(JSON.stringify(modelsMsg()));

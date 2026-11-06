@@ -347,6 +347,14 @@ function renderRouter({ state, error, at }) {
     : 'Restart atenet-router if the demo gets stuck';
 }
 
+// Clicking an actor's box deletes it after a confirm.
+viz.onActorClick = a => {
+  if (clusterWs?.readyState !== 1) return;
+  const owner = viz.sessions.get(a.name);
+  if (!confirm(`Delete actor ${a.atespace}/${a.name} on ${currentContext}?${owner ? `\n\nIt belongs to ${owner}, which will get a new actor.` : ''}`)) return;
+  clusterWs.send(JSON.stringify({ type: 'delete-actor', name: a.name, atespace: a.atespace }));
+};
+
 routerBtn.onclick = () => {
   if (clusterWs?.readyState !== 1) return;
   if (!confirm(`Restart atenet-router on ${currentContext}? Open actor connections will drop.`)) return;

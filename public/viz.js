@@ -64,6 +64,7 @@ export class Viz {
     this.sessions = new Map(); // actor name -> tab label, for actors owned by open agy tabs
     this.onActorColors = null; // set by the page; called with actor name -> color after each update
     this.onCallsClick = null;  // set by the page; called when the tool calls panel is clicked
+    this.onActorClick = null;  // set by the page; called with the actor whose box was clicked
     this.bigCalls = null;      // { list, sub } of the expanded tool calls view while it's open
 
     this.tip = el('div', 'as-tip');
@@ -472,6 +473,7 @@ export class Viz {
         this.tip.innerHTML = '';
         const owner = this.sessions.get(a.name);
         this.tip.append(`actor/${a.name}`, el('br'), el('span', null, `${owner ? owner + ' · ' : ''}${a.state}${a.workerPod ? ' · ' + a.workerPod : ''}${a.template ? ' · ' + a.template : ''}`));
+        if (this.onActorClick) this.tip.append(el('br'), el('span', null, 'click to delete'));
         this.tip.hidden = false;
         const r = t.getBoundingClientRect();
         const w = this.tip.offsetWidth;
@@ -482,6 +484,9 @@ export class Viz {
     this.root.addEventListener('mouseover', over);
     this.root.addEventListener('click', e => {
       if (e.target.closest('#viz-calls') && this.onCallsClick) this.onCallsClick();
+      const dot = e.target.closest('.as-viz__dot[data-uid]');
+      const a = dot && this.actors.get(dot.dataset.uid);
+      if (a && this.onActorClick) this.onActorClick(a);
     });
     this.root.addEventListener('mouseleave', () => {
       if (this.hoverUid) this.pair(this.hoverUid, false);
